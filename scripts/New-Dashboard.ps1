@@ -1,0 +1,279 @@
+<#
+.SYNOPSIS
+    Generates the Homepage dashboard configuration for this stack.
+
+.DESCRIPTION
+    Writes settings.yaml, services.yaml, widgets.yaml and bookmarks.yaml into
+    CONFIG_ROOT\homepage, with the Sonarr/Radarr/Lidarr/Prowlarr/Bazarr API keys
+    read straight out of the running containers.
+
+    Credentials that cannot be read automatically (Jellyfin, Komga, Kavita,
+    qBittorrent) are emitted as {{HOMEPAGE_VAR_*}} placeholders. Fill the
+    matching entries in .env and the values never touch the config files.
+
+    Existing files are backed up with a .bak-<timestamp> suffix.
+
+.EXAMPLE
+    .\New-Dashboard.ps1
+    docker compose up -d homepage
+#>
+[CmdletBinding()]
+param(
+    [string]$Title = 'Home Server'
+)
+
+$ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot '_Common.ps1')
+
+$repoRoot = Get-RepoRoot
+$envPath = Join-Path $repoRoot '.env'
+$conf = Get-DotEnv -Path $envPath
+
+$configRoot = Convert-ToWindowsPath (Get-EnvOrDefault -Conf $conf -Key 'CONFIG_ROOT' -Default 'C:/homeserver/config')
+$hpDir = Join-Path $configRoot 'homepage'
+if (-not (Test-Path -LiteralPath $hpDir)) { New-Item -ItemType Directory -Path $hpDir -Force | Out-Null }
+
+$hostIp = Get-EnvOrDefault -Conf $conf -Key 'HOST_IP' -Default 'localhost'
+$hpPort = Get-EnvOrDefault -Conf $conf -Key 'HOMEPAGE_PORT' -Default '3000'
+
+# Allowed hosts must cover every address you open the dashboard from, or
+# Homepage returns a blank page with a host validation error.
+$allowed = "localhost:$hpPort,127.0.0.1:$hpPort,$hostIp`:$hpPort"
+Set-DotEnvValue -Path $envPath -Key 'HOMEPAGE_ALLOWED_HOSTS' -Value $allowed
+Write-Ok "HOMEPAGE_ALLOWED_HOSTS = $allowed"
+
+# ------------------------------------------------------------------- api keys
+Write-Step "Collecting API keys"
+
+$keys = @{}
+foreach ($svc in @('sonarr', 'radarr', 'lidarr', 'prowlarr')) {
+    $k = Get-ArrApiKey -Container $svc -TimeoutSec 20
+    if ($k) { $keys[$svc] = $k; Write-Ok "$svc" }
+    else { $keys[$svc] = ''; Write-Warn "$svc not reachable, widget will be left blank" }
+}
+
+$bazarrKey = ''
+try {
+    $yaml = & docker exec bazarr sh -c "cat /config/config/config.yaml 2>/dev/null || cat /config/config.yaml 2>/dev/null"
+    if ($yaml) {
+        $m = [regex]::Match(($yaml -join "`n"), 'apikey:\s*([A-Za-z0-9]+)')
+        if ($m.Success) { $bazarrKey = $m.Groups[1].Value; Write-Ok "bazarr" }
+    }
+}
+catch { Write-Warn "bazarr key not readable" }
+
+# --------------------------------------------------------------------- writing
+function Write-HomepageFile {
+    param([string]$Name, [string]$Content)
+    $path = Join-Path $hpDir $Name
+    if (Test-Path -LiteralPath $path) {
+        $backup = "$path.bak-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+        Move-Item -LiteralPath $path -Destination $backup
+        Write-Info "existing $Name backed up"
+    }
+    Set-Content -LiteralPath $path -Value $Content -Encoding UTF8
+    Write-Ok "wrote $Name"
+}
+
+Write-Step "Writing dashboard config"
+
+$settings = @"
+---
+title: $Title
+description: Media, comics and automation
+startUrl: http://${hostIp}:$hpPort
+
+theme: dark
+color: slate
+headerStyle: boxed
+hideVersion: true
+
+# The groups below are the answer to "what do I feel like doing right now".
+layout:
+  Watch:
+    style: row
+    columns: 3
+    icon: mdi-television-play
+  Read:
+    style: row
+    columns: 3
+    icon: mdi-book-open-page-variant
+  Discover:
+    style: row
+    columns: 2
+    icon: mdi-magnify
+  Automation:
+    style: row
+    columns: 4
+    icon: mdi-robot
+  Downloads:
+    style: row
+    columns: 2
+    icon: mdi-download
+"@
+
+# Container-internal URLs are used for widget API calls (server side), and
+# host URLs for the clickable links (browser side). Mixing these up is the
+# single most common reason a widget shows "API Error".
+$services = @"
+---
+- Watch:
+    - Jellyfin:
+        icon: jellyfin.png
+        href: http://${hostIp}:$(Get-EnvOrDefault -Conf $conf -Key 'JELLYFIN_PORT' -Default '8096')
+        description: Movies, TV and anime
+        widget:
+          type: jellyfin
+          url: http://jellyfin:8096
+          key: {{HOMEPAGE_VAR_JELLYFIN_KEY}}
+          enableBlocks: true
+          enableNowPlaying: true
+
+    - Plex:
+        icon: plex.png
+        href: http://${hostIp}:32400/web
+        description: Only running with the plex profile
+
+- Read:
+    - Komga:
+        icon: komga.png
+        href: http://${hostIp}:$(Get-EnvOrDefault -Conf $conf -Key 'KOMGA_PORT' -Default '25600')
+        description: Manga and comics
+        widget:
+          type: komga
+          url: http://komga:25600
+          username: {{HOMEPAGE_VAR_KOMGA_USER}}
+          password: {{HOMEPAGE_VAR_KOMGA_PASSWORD}}
+
+    - Kavita:
+        icon: kavita.png
+        href: http://${hostIp}:$(Get-EnvOrDefault -Conf $conf -Key 'KAVITA_PORT' -Default '5001')
+        description: Manga, comics and ebooks
+        widget:
+          type: kavita
+          url: http://kavita:5000
+          username: {{HOMEPAGE_VAR_KAVITA_USER}}
+          password: {{HOMEPAGE_VAR_KAVITA_PASSWORD}}
+
+- Discover:
+    - Jellyseerr:
+        icon: jellyseerr.png
+        href: http://${hostIp}:$(Get-EnvOrDefault -Conf $conf -Key 'JELLYSEERR_PORT' -Default '5055')
+        description: Request something new
+
+- Automation:
+    - Sonarr:
+        icon: sonarr.png
+        href: http://${hostIp}:$(Get-EnvOrDefault -Conf $conf -Key 'SONARR_PORT' -Default '8989')
+        description: TV and anime
+        widget:
+          type: sonarr
+          url: http://sonarr:8989
+          key: $($keys['sonarr'])
+          enableQueue: true
+
+    - Radarr:
+        icon: radarr.png
+        href: http://${hostIp}:$(Get-EnvOrDefault -Conf $conf -Key 'RADARR_PORT' -Default '7878')
+        description: Movies
+        widget:
+          type: radarr
+          url: http://radarr:7878
+          key: $($keys['radarr'])
+          enableQueue: true
+
+    - Lidarr:
+        icon: lidarr.png
+        href: http://${hostIp}:$(Get-EnvOrDefault -Conf $conf -Key 'LIDARR_PORT' -Default '8686')
+        description: Music
+        widget:
+          type: lidarr
+          url: http://lidarr:8686
+          key: $($keys['lidarr'])
+
+    - Bazarr:
+        icon: bazarr.png
+        href: http://${hostIp}:$(Get-EnvOrDefault -Conf $conf -Key 'BAZARR_PORT' -Default '6767')
+        description: Subtitles
+        widget:
+          type: bazarr
+          url: http://bazarr:6767
+          key: $bazarrKey
+
+- Downloads:
+    - qBittorrent:
+        icon: qbittorrent.png
+        href: http://${hostIp}:$(Get-EnvOrDefault -Conf $conf -Key 'QBT_WEBUI_PORT' -Default '8080')
+        description: Torrent client
+        widget:
+          type: qbittorrent
+          url: http://qbittorrent:8080
+          username: {{HOMEPAGE_VAR_QBT_USER}}
+          password: {{HOMEPAGE_VAR_QBT_PASSWORD}}
+
+    - Prowlarr:
+        icon: prowlarr.png
+        href: http://${hostIp}:$(Get-EnvOrDefault -Conf $conf -Key 'PROWLARR_PORT' -Default '9696')
+        description: Indexer manager
+        widget:
+          type: prowlarr
+          url: http://prowlarr:9696
+          key: $($keys['prowlarr'])
+"@
+
+$widgets = @"
+---
+- resources:
+    cpu: true
+    memory: true
+    disk: /
+
+- search:
+    provider: duckduckgo
+    target: _blank
+
+- datetime:
+    text_size: xl
+    format:
+      timeStyle: short
+      dateStyle: long
+"@
+
+$bookmarks = @"
+---
+- Manage:
+    - Portainer:
+        - abbr: PT
+          href: http://${hostIp}:$(Get-EnvOrDefault -Conf $conf -Key 'PORTAINER_PORT' -Default '9000')
+
+- Docs:
+    - Komga:
+        - abbr: KO
+          href: https://komga.org/docs/introduction
+    - Kavita:
+        - abbr: KA
+          href: https://wiki.kavitareader.com/
+    - Servarr wiki:
+        - abbr: SW
+          href: https://wiki.servarr.com/
+"@
+
+Write-HomepageFile -Name 'settings.yaml' -Content $settings
+Write-HomepageFile -Name 'services.yaml' -Content $services
+Write-HomepageFile -Name 'widgets.yaml' -Content $widgets
+Write-HomepageFile -Name 'bookmarks.yaml' -Content $bookmarks
+
+# Homepage looks for this file; an empty one keeps it from logging errors.
+$dockerYaml = Join-Path $hpDir 'docker.yaml'
+if (-not (Test-Path -LiteralPath $dockerYaml)) { Set-Content -LiteralPath $dockerYaml -Value '---' -Encoding UTF8 }
+
+Write-Step "Next"
+Write-Host "    1. Fill these in .env if you want the live widgets:"
+Write-Host "       HOMEPAGE_VAR_JELLYFIN_KEY   (Jellyfin > Dashboard > Advanced > API Keys)"
+Write-Host "       HOMEPAGE_VAR_KOMGA_USER / _PASSWORD"
+Write-Host "       HOMEPAGE_VAR_KAVITA_USER / _PASSWORD   (needs the Admin role)"
+Write-Host "       HOMEPAGE_VAR_QBT_USER / _PASSWORD"
+Write-Host "    2. docker compose up -d homepage"
+Write-Host "    3. http://${hostIp}:$hpPort"
+Write-Host ""
+Write-Info "the tiles work without any of the above - only the live stats need credentials"
