@@ -25,6 +25,7 @@ scripts/_Common.ps1             shared helpers
 docker-compose.yml              the stack
 .env.example                    paths, ports, timezone
 docs/services.md                every service: ports, access, integration
+docs/tuning.md                  what is configured for you, what is not, and why
 docs/manga-lists.md             importing reading lists
 ```
 
