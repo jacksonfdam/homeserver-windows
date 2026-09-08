@@ -29,6 +29,7 @@ scripts/Import-MangaLists.ps1   MangaDex/MangaFire lists -> Komga/Kavita
 scripts/Update-MangaBaka.ps1    mirrors the MangaBaka SQLite dump locally
 scripts/Clear-StalledQueue.ps1  removes dead downloads, meant as a Scheduled Task
 docs/services.md                per-service reference: ports, access, integration
+docs/tuning.md                  automated vs manual vs deliberately-not-done settings
 docs/manga-lists.md             the list import flow
 ```
 
