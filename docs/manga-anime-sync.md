@@ -1,128 +1,55 @@
-# Manga and anime list sync — design notes
+# Manga and anime list sync — design
 
-**Status: undecided.** This documents the candidate flows so the trade-offs are
-visible before anything is built. Nothing here is implemented yet. Once an option
-is picked, the chosen flow becomes the spec and the rest of this file becomes
-history.
+**Status: decided 2026-09-09.** Manga acquisition goes through AIO Webtoon
+Downloader driven by a script in this repository, with MangaBaka as the metadata
+and cross-ID source. Nothing is implemented yet; this is the shape to build.
 
-Goal: read reading/watching lists from AniList and MyAnimeList, and have the
-stack acquire what is on them — manga into Komga/Kavita, anime into Jellyfin —
-reusing the Prowlarr / qBittorrent / Sonarr infrastructure that already exists.
+Goal: read reading and watching lists from AniList and MyAnimeList, and have the
+stack acquire what is on them — manga into Komga and Kavita, anime into Jellyfin
+— reusing the Prowlarr / qBittorrent / Sonarr infrastructure that already exists.
 
 ## Three subsystems, not one
 
-The request splits into three pipelines that share almost nothing:
+The work splits into three pipelines that share almost nothing:
 
 | | list source | acquisition | reader/player |
 | --- | --- | --- | --- |
-| **A** manga | AniList + MAL | see options below | Komga / Kavita |
+| **A** manga | AniList + MAL | AIO, driven from here | Komga / Kavita |
 | **B** anime list sync | AniList + MAL | — bridge to Sonarr — | — |
 | **C** anime download | Sonarr | Prowlarr + qBittorrent | Jellyfin |
 
 **C already works.** Sonarr, Prowlarr, qBittorrent and the `/data/media/anime`
 root folder are wired by `Wire-Services.ps1`. Nothing to build.
 
-**B is a bridge that does not exist yet** and is unrelated to any manga tool.
-
-**A is where the real decision is.**
+**B is a bridge that does not exist yet.** It is independent of A and can be
+built in either order.
 
 ## Reference data: MangaBaka
 
-Common to every option in A. MangaBaka publishes a nightly dump (00:00 UTC,
-weekly full refresh) as JSON, JSONL or **SQLite**, in tar.gz or zst, roughly 3 GB
-uncompressed. It cross-maps AniList, MyAnimeList, MangaUpdates, Kitsu,
-Anime-Planet and Shikimori IDs.
+MangaBaka publishes a nightly dump (00:00 UTC, weekly full refresh) as JSON,
+JSONL or **SQLite**, in tar.gz or zst, roughly 3 GB uncompressed. It cross-maps
+AniList, MyAnimeList, MangaUpdates, Kitsu, Anime-Planet and Shikimori IDs.
 
-That cross-map is what makes "one list on AniList, another on MAL" resolvable to
-a single series. The SQLite build can be queried directly from a script with no
-server, which is why it appears in every flow below.
+That cross-map is the reason it is here: one list on AniList and another on MAL
+have to resolve to a single series, and title matching alone will not do it
+reliably. The SQLite build can be queried straight from a script with no server,
+so it costs one download and a scheduled refresh, not a running service.
 
 Licence: CC BY-NC-SA 4.0 for MangaBaka's own data, personal use, attribution
 required. Third-party fields keep their own provider's terms.
 
-## Option A1 — Maki, complete
+## A — manga
 
-Maki is ASP.NET Core 10 + SQLite, shipped as Docker, web UI on 8990. It is a
-Sonarr-for-manga: monitors series, downloads chapters, writes CBZ with
-ComicInfo.xml. It syncs with AniList, MAL, Kitsu and MangaBaka as trackers, keeps
-a local MangaBaka mirror for metadata, and integrates Kavita, Prowlarr and
-qBittorrent. Its own scrapers cover MangaDex, MangaPill, Weeb Central, MangaFire,
-MangaPlus, Asura, WEBTOON and more.
-
-```
-      AniList ──┐
-      MAL ──────┼──►  Maki  ◄── MangaBaka dump (local mirror, ~3 GB)
-      Kitsu ────┘      │
-                       ├──► built-in scrapers ──► CBZ + ComicInfo.xml
-                       └──► Prowlarr ──► qBittorrent ──► import ──► CBZ
-                                                             │
-                                                    /data/media/manga
-                                                             ▼
-                                                     Komga / Kavita
-```
-
-Everything works out of the box. Two costs, both of which contradict decisions
-recorded in `CLAUDE.md`:
-
-- the quick start asks for `FLARESOLVERR_URL`; FlareSolverr is what gets the
-  scrapers past Cloudflare, and it was deliberately excluded from this stack
-- the scrapers pull from aggregator sites, the same reason Kaizoku was excluded
-
-## Option A2 — Maki as catalogue only
-
-Same container, scrapers left unconfigured, no FlareSolverr. Maki is used for
-what it does that nothing else here does: tracker sync, the MangaBaka mirror,
-CBZ packaging with ComicInfo.xml, and Kavita integration. Acquisition goes
-through the existing Prowlarr → qBittorrent path.
-
-```
-      AniList ──┐
-      MAL ──────┴──►  Maki (catalogue + metadata)
-                        │  MangaBaka mirror resolves cross-IDs
-                        ▼
-                    Prowlarr  ──► indexers (Nyaa and whatever else is enabled)
-                        │
-                        ▼
-                   qBittorrent   category: manga-maki
-                        │  /data/torrents/manga
-                        ▼
-                    Maki import ──► CBZ + ComicInfo.xml
-                        │  /data/media/manga
-                        ▼
-                  Komga / Kavita   (already mount that path)
-```
-
-What it costs in the repo:
-
-- `docker-compose.yml`: one service, port 8990, `${CONFIG_ROOT}/maki:/config` and
-  the single `${DATA_ROOT}:/data` mount, behind a new profile
-- `.env.example`: `MAKI_PORT=8990`
-- `Setup-HomeServer.ps1`: add `maki` to `$configDirs`. The data directories it
-  needs — `torrents/manga` and `media/manga` — are already created.
-- `Wire-Services.ps1`: register qBittorrent (category `manga-maki`) and Prowlarr
-  inside Maki. **To verify: whether Maki exposes a REST API for this, or whether
-  it is web-UI only.** If it is UI-only, this step stays manual and belongs in
-  the "not done yet" list rather than in the wiring script.
-- `New-Dashboard.ps1`: a Maki tile in the Read group
-
-The honest limitation, and it is the deciding one: **torrent indexers carry manga
-badly.** Nyaa and friends have completed volumes and archive packs; they do not
-have this week's chapter the day it drops. A2 builds a good back catalogue and a
-poor ongoing feed. If most of what is on your lists is ongoing series, A2 will
-mostly return nothing, and the failure looks like Prowlarr working correctly.
-
-## Option A3 — AIO Webtoon Downloader plus a script here
-
-AIO is Python 3.8+, GPLv3, CLI plus GUI plus an Electron app, no Docker image.
-25+ aggregator sites, output as CBZ/PDF/EPUB. Unlike a plain downloader it keeps
-state: `--save-params` records a series and `--update-all` fetches new chapters
-later. It also does cross-site fuzzy search (RapidFuzz) with fallback when a
-source is missing chapters, exposes a FastAPI REST interface, and enriches
-metadata from AniList.
+AIO Webtoon Downloader is Python 3.8+, GPLv3, CLI plus GUI plus an Electron app,
+with no Docker image. It covers 25+ sources and writes CBZ, PDF or EPUB. It is
+not a one-shot downloader: `--save-params` records a series and `--update-all`
+fetches new chapters later, so the update loop already exists. It also does
+cross-site fuzzy search (RapidFuzz) with fallback when a source is missing
+chapters, and exposes a FastAPI REST interface.
 
 ```
    AniList GraphQL ──┐
-                     ├──►  script (this repo, PowerShell)
+                     ├──►  sync script (this repo, PowerShell)
    MAL API v2 ───────┘         │
                                ├──► MangaBaka SQLite ──► cross-ID + metadata
                                │
@@ -132,46 +59,53 @@ metadata from AniList.
                                │              ▼
                                │       CBZ in /data/media/manga
                                │
-                               └──► generate ComicInfo.xml from MangaBaka
+                               └──► ComicInfo.xml written from MangaBaka
                                               │
                                               ▼
                                       Komga / Kavita
 ```
 
-Why this one fits the repo: `Import-MangaLists.ps1` already does list export,
-title normalisation, Levenshtein matching and CSV reporting. A3 turns its
-`missing.csv` from a backlog into a queue. No new long-running service, no
-FlareSolverr container, and the shape matches the existing PowerShell + Docker
-pattern.
+### Why this shape
 
-What it costs:
+`Import-MangaLists.ps1` already does list export, title normalisation,
+Levenshtein matching and CSV reporting. This turns its `missing.csv` from a
+backlog into a queue, which is a change of purpose rather than a new subsystem.
+No new long-running service, and the result reads like the rest of the repo:
+Docker for anything that listens on a port, PowerShell for anything that
+orchestrates.
 
-- AIO has no Docker image. Either a Python runtime plus `patchright install
-  chromium` on the Windows host, or a Dockerfile this repo owns and maintains.
-- AIO does Cloudflare bypass internally (Patchright / cloudscraper). This does
-  not avoid the FlareSolverr decision, it relocates it into a dependency.
-- It ships `pywidevine` and Widevine DRM support. Nothing in this design needs
-  that path, but it installs with everything else.
-- No ComicInfo.xml. The script has to generate it — which is tractable, since
-  MangaBaka is already open for the ID lookup.
-- AniList is metadata only here; there is no MAL support at all. Reading both
-  lists stays the script's job either way.
+### What has to be built
 
-## Options compared
+1. **MangaBaka mirror.** Download and unpack the SQLite dump, refreshed on a
+   schedule. A daily Scheduled Task alongside `Clear-StalledQueue.ps1` is the
+   obvious home. `.gitignore` already excludes the dump and its archives.
+2. **List readers.** AniList over GraphQL, MyAnimeList over API v2. Both need an
+   application registration; MAL's is the more awkward of the two.
+3. **Resolution.** List entry → MangaBaka row → the identity used everywhere
+   downstream. This is what makes "the same series on both lists" one item
+   instead of two.
+4. **Acquisition.** Hand the resolved series to AIO, preferring its REST
+   interface over shelling out so failures come back as data.
+5. **ComicInfo.xml.** AIO does not write it, so the script does, from the
+   MangaBaka row it already has open. Without this, Komga and Kavita fall back to
+   filename parsing and the library metadata is poor.
 
-| | A1 Maki full | A2 Maki catalogue | A3 AIO + script |
-| --- | --- | --- | --- |
-| update loop | service | service | `--update-all` |
-| cross-site fuzzy search | — | — | yes |
-| reads AniList list | yes | yes | script |
-| reads MAL list | yes | yes | script |
-| ComicInfo.xml | yes | yes | script generates |
-| ongoing chapters | good | **poor** | good |
-| back catalogue | good | good | good |
-| new service to run | yes | yes | no |
-| FlareSolverr | required | not needed | internalised |
-| new code to maintain | little | little | the orchestration |
-| source of files | aggregators | torrent indexers | aggregators |
+### What it costs
+
+Recorded here so the trade-off is not rediscovered later as a surprise:
+
+- **No Docker image.** Either a Python runtime plus `patchright install
+  chromium` on the Windows host, or a Dockerfile this repository owns and
+  maintains. The second fits the stack better and is the recommendation.
+- **Cloudflare bypass is internalised.** AIO uses Patchright and cloudscraper
+  directly. `CLAUDE.md` records FlareSolverr as a deliberate omission; this does
+  not avoid that decision so much as move it inside a dependency.
+- **Widevine support ships with it.** `pywidevine` installs along with
+  everything else. No part of this design uses that path.
+- **The sources are aggregator sites.** Same category as the downloader left out
+  of the original stack. Chosen knowingly.
+- **The orchestration is ours.** AIO covers the update loop, search and retry;
+  everything in "What has to be built" is this repository's to maintain.
 
 ## B and C — anime
 
@@ -189,8 +123,8 @@ C is unchanged and already working:
 
 B is the missing bridge, and it has one hard problem worth knowing before
 starting: **AniList and MAL are keyed per anime entry, Sonarr is keyed by TVDB
-series.** One TVDB series is often several AniList entries (season 1, season 2,
-a cour split, a recap), so the mapping is not one-to-one and cannot be derived
+series.** One TVDB series is often several AniList entries — season 1, season 2,
+a cour split, a recap — so the mapping is not one-to-one and cannot be derived
 from titles reliably.
 
 To verify before designing B:
@@ -198,18 +132,16 @@ To verify before designing B:
 - whether Sonarr's Import List still offers a generic "Custom List" that takes a
   URL returning JSON, which would let a script here publish the list instead of
   writing to Sonarr's API directly
-- which anime ID mapping dataset to use — `Fribb/anime-lists` and
+- which anime ID mapping dataset to use. `Fribb/anime-lists` and
   `manami-project/anime-offline-database` are the usual candidates for
-  AniList/MAL → TVDB, both need checking for current coverage
-
-B does not block A. It should be its own design pass once A is settled.
+  AniList/MAL to TVDB; both need checking for current coverage
 
 ## Open questions
 
-- Does Maki expose a configuration REST API, or is setup web-UI only? Decides
-  whether A1/A2 wiring can join `Wire-Services.ps1` or stays manual.
-- Where does the 3 GB MangaBaka dump live, and what refreshes it? A nightly
-  Scheduled Task alongside `Clear-StalledQueue.ps1` is the obvious home.
-- Hardlinks are expected to fail on the NTFS bind mount. Manga CBZs are small
-  enough that copies are cheap, so this matters far less here than for video —
-  but it is the same probe result either way.
+- How is AIO packaged for this stack — a Dockerfile here, or Python on the
+  Windows host? Decides where the sync script runs and how it reaches AIO.
+- Does AIO's FastAPI interface cover the whole flow (search, queue, status), or
+  only part of it, with the rest CLI-only?
+- Hardlinks are expected to fail on the NTFS bind mount. CBZs are small enough
+  that copies are cheap, so this matters far less here than for video — but it is
+  the same probe result either way.
