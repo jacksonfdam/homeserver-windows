@@ -144,10 +144,6 @@ most useful thing in the repo.
 
 ## Known issues in the current tree
 
-- **`docs/` does not exist.** `services.md` and `manga-lists.md` sit at the repo
-  root. `README.md` and the Layout section above both point at `docs/`. Either
-  create the directory and move them, or fix the references — do not add a third
-  variant.
 - **`.env.example` ships a populated `KOMGA_API_KEY`.** A real-looking value is
   committed in the example file (and in `.env`). Treat it as leaked: rotate it in
   Komga and blank the field in the example rather than copying it forward.
