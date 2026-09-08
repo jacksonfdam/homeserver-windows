@@ -1,0 +1,165 @@
+# CLAUDE.md
+
+Context for whoever picks this up next, human or agent. Read this before changing
+anything — several choices here look wrong until you know why they were made, and
+a well-intentioned "fix" will undo them.
+
+## What this is
+
+A Windows port of a self-hosted media server stack, adapted from
+[akitaonrails/plex_home_server_docker](https://github.com/akitaonrails/plex_home_server_docker)
+and the article [Meu "Netflix Pessoal" com Docker Compose](https://akitaonrails.com/2024/04/03/meu-netflix-pessoal-com-docker-compose/),
+plus Komga and Kavita for comics/manga.
+
+The repo lives on macOS (`/Volumes/Projects/homeserver`) but the target is a
+Windows PC running Docker Desktop with the WSL2 backend. Nothing here can be
+tested on the Mac. Do not "simplify" the Windows-specific handling just because
+it looks redundant from a Unix shell.
+
+## Layout
+
+```
+docker-compose.yml              the whole stack, one file, Compose profiles
+.env.example                    paths, ports, TZ, dashboard vars
+scripts/_Common.ps1             shared helpers, dot-sourced by everything else
+scripts/Setup-HomeServer.ps1    entry point: preflight -> folders -> .env -> up -> wiring
+scripts/Wire-Services.ps1       connects services to each other via REST APIs
+scripts/New-Dashboard.ps1       generates Homepage YAML config
+scripts/Import-MangaLists.ps1   MangaDex/MangaFire lists -> Komga/Kavita
+scripts/Clear-StalledQueue.ps1  removes dead downloads, meant as a Scheduled Task
+docs/services.md                per-service reference: ports, access, integration
+docs/manga-lists.md             the list import flow
+```
+
+## Decisions that must not be reverted casually
+
+**One `/data` mount per container.** The upstream repo maps `/downloads`,
+`/movies` and `/tv` separately. Inside the container those are separate
+filesystems, so every import is a cross-device copy. Everything here mounts
+`${DATA_ROOT}:/data` with `torrents/` and `media/` as siblings. If you split
+these again, imports get slow and double the disk usage.
+
+**Forward slashes in `.env` paths.** `D:/media`, never `D:\media`. Compose
+mishandles backslashes in volume definitions. `Convert-ToDockerPath` normalises
+this and `Setup-HomeServer.ps1` rewrites hand-edited values.
+
+**No `/dev/dri`, no `network_mode: host`.** Neither exists on Docker Desktop for
+Windows. The NVENC block in the compose file is commented out on purpose — it
+only works with an NVIDIA GPU plus WSL2 GPU support. Intel QuickSync is
+impossible in a container here; the documented answer is to run Plex/Jellyfin
+natively on Windows.
+
+**Provider registration is schema-driven.** `New-ProviderFromSchema` in
+`_Common.ps1` fetches each app's `/schema` endpoint and overrides only the fields
+it cares about, instead of hardcoding a field list. This is what makes the wiring
+survive *arr version bumps. Do not replace it with a literal JSON body.
+
+**PowerShell 5.1 compatibility.** No `?.`, no `??`, no ternaries, no
+`-SkipHttpErrorCheck`, no `Set-StrictMode` (it makes the defensive property
+checks throw). Windows PowerShell 5.1 is what ships on the box; PS7 is not
+assumed.
+
+**Everything is idempotent.** Re-running any script must be safe. Existing
+providers are detected by name and skipped; the Komga collection merges rather
+than duplicating; config files are backed up before being rewritten.
+
+**Two deliberate omissions.** FlareSolverr is not in the stack (its purpose is
+defeating bot protection) and no indexers are preconfigured in Prowlarr. Both
+were left out on purpose, not forgotten. Kaizoku (the manga downloader from the
+original repo) is out for the same reason — `missing.csv` from the list import is
+a backlog, not a download queue.
+
+## API facts verified against source, not memory
+
+These were checked against the actual specs while building. If something breaks,
+re-verify rather than guessing:
+
+- **Komga** `GET /api/v1/series?search=` is marked `deprecated: true` in
+  `komga/docs/openapi.json`. Use `POST /api/v1/series/list` with a
+  `{ "fullTextSearch": "..." }` body. Auth is `X-API-Key` header or basic.
+  `POST /api/v1/collections` requires `{name, ordered, seriesIds}` — all three,
+  `seriesIds` with `minItems: 1`, ADMIN role.
+- **Kavita** exchanges the API key for a JWT:
+  `POST /api/Plugin/authenticate?apiKey=...&pluginName=...`. Search is
+  `GET /api/Search/search?queryString=` returning `series[]` with `seriesId`.
+  Want-to-read is `POST /api/want-to-read/add-series` with `{seriesIds}`. Reading
+  lists are chapter-level: `POST /api/ReadingList/create` with `{title}` then
+  `POST /api/ReadingList/update-by-multiple-series` with
+  `{readingListId, seriesIds}`.
+- **MangaDex** legacy `/auth/login` is gone. Follows need a personal API client
+  (manual approval) and the password grant at
+  `auth.mangadex.org/realms/mangadex/protocol/openid-connect/token`. Public
+  MDLists need no auth: `GET /list/{uuid}` then `GET /manga?ids[]=` in batches of
+  100. Rate limit is roughly 5 req/s, hence the 250 ms sleep.
+- **Homepage** requires `HOMEPAGE_ALLOWED_HOSTS` since v1.0 or it renders blank.
+  Widget `url` must be the container name; `href` must be the host address.
+  Komga/Kavita widgets take username+password, Jellyfin takes an API key, and the
+  Kavita account needs the Admin role or the stats endpoint 403s.
+- **qBittorrent** 4.6.1+ generates a random temporary WebUI password on first
+  start and logs it. `admin`/`adminadmin` is no longer the default. The seed
+  config relies on `WebUI\AuthSubnetWhitelist=172.16.0.0/12` (Docker bridge only)
+  so automation works without credentials.
+
+## Not done yet
+
+- **Jellyseerr wiring is manual.** It needs a Jellyfin/Plex login before it will
+  accept Sonarr/Radarr settings, so the wizard cannot be skipped.
+- **Bazarr wiring is best effort.** Its settings endpoint takes form data, and the
+  API key lives in `config.yaml` at a path that has moved between versions.
+  Failures are warned and skipped, never fatal.
+- **First-run wizards** for Jellyfin, Komga and Kavita are interactive by design.
+  Do not try to automate account creation.
+- **Radarr has no release-profile endpoint**, so the executable filter exists only
+  in Sonarr. The Radarr equivalent would be a custom format.
+- **`Clear-StalledQueue.ps1` is not registered as a Scheduled Task automatically**
+  — the command is documented in its help block, but registering system tasks
+  without being asked is rude.
+- **Hardlinks almost certainly fail on the NTFS bind mount.**
+  `Setup-HomeServer.ps1` probes this at runtime with a throwaway container rather
+  than assuming. If someone reports slow imports, that probe result is the first
+  thing to check.
+
+## Working on this
+
+Nothing can be run from macOS. Before shipping a change:
+
+```bash
+python3 -c "import yaml; yaml.safe_load(open('docker-compose.yml'))"   # compose parses
+docker compose config                                                  # interpolation resolves
+```
+
+For PowerShell, `Invoke-ScriptAnalyzer` on the Windows box, or at minimum check
+brace/paren balance. The scripts have no tests; they are verified by running them
+against a live stack.
+
+Style: comments explain why, not what. The scripts are meant to be read as much
+as run — this started as a portfolio lab, and the Windows-specific gotchas are the
+actual content. Keep prose in English.
+
+## Where to look first
+
+`docs/services.md` has the port map, the flow diagram, the setup order and a
+symptom-to-cause table. That table is the accumulated debugging, and it is the
+most useful thing in the repo.
+
+## Known issues in the current tree
+
+- **`docs/` does not exist.** `services.md` and `manga-lists.md` sit at the repo
+  root. `README.md` and the Layout section above both point at `docs/`. Either
+  create the directory and move them, or fix the references — do not add a third
+  variant.
+- **`.env.example` ships a populated `KOMGA_API_KEY`.** A real-looking value is
+  committed in the example file (and in `.env`). Treat it as leaked: rotate it in
+  Komga and blank the field in the example rather than copying it forward.
+- **`.env2.example` is a byte-identical copy of `.env.example`.** No script reads
+  it. Delete it unless it is meant to grow into something.
+- **`docker-compose.old.yml` is a pre-Homepage snapshot.** It differs from the
+  live file only by the missing `homepage` service. Edit `docker-compose.yml`;
+  the old one is kept for reference and is not maintained.
+- **A repo-wide case-insensitive `d:` -> `C:` replace once corrupted this tree.**
+  It has been repaired (`PUIC`/`PGIC` -> `PUID`/`PGID`, service and image
+  `sabnzbC` -> `sabnzbd`, `HOMEPAGE_VAR_*_PASSWORC` -> `_PASSWORD`, plus prose in
+  the scripts and docs). Both compose files parse and `docker compose config`
+  resolves. Worth knowing because the damage was invisible to YAML validation —
+  the file parsed fine, it just named an image that does not exist. Drive letters
+  were left alone: the Windows host really is on `C:`.
