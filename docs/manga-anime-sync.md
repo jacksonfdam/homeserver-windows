@@ -94,9 +94,12 @@ orchestrates.
 
 Recorded here so the trade-off is not rediscovered later as a surprise:
 
-- **No Docker image.** Either a Python runtime plus `patchright install
-  chromium` on the Windows host, or a Dockerfile this repository owns and
-  maintains. The second fits the stack better and is the recommendation.
+- **No Docker image, so this repository owns one.** Decided rather than left
+  open: a Dockerfile here, not Python plus `patchright install chromium` on the
+  Windows host. It is the only option that keeps the property the rest of the
+  stack has — everything that listens on a port is a container on the
+  `homeserver` network, reachable by service name. The cost is an image we build
+  and keep working.
 - **Cloudflare bypass is internalised.** AIO uses Patchright and cloudscraper
   directly. `CLAUDE.md` records FlareSolverr as a deliberate omission; this does
   not avoid that decision so much as move it inside a dependency.
@@ -138,8 +141,6 @@ To verify before designing B:
 
 ## Open questions
 
-- How is AIO packaged for this stack — a Dockerfile here, or Python on the
-  Windows host? Decides where the sync script runs and how it reaches AIO.
 - Does AIO's FastAPI interface cover the whole flow (search, queue, status), or
   only part of it, with the rest CLI-only?
 - Hardlinks are expected to fail on the NTFS bind mount. CBZs are small enough
