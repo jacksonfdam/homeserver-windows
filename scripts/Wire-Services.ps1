@@ -14,8 +14,10 @@
       4. registers Sonarr / Radarr / Lidarr as applications in Prowlarr, plus
          qBittorrent, so Prowlarr is the single place that manages indexers
       5. points Bazarr at Sonarr and Radarr (best effort - see README)
-      6. optionally applies minimum file sizes per quality and a release filter
-         that rejects executables (-ApplyQualityFloors)
+      6. optionally applies minimum file sizes per quality, plus a filter that
+         rejects releases advertising an executable payload - a release profile
+         in Sonarr, a negatively scored custom format in Radarr
+         (-ApplyQualityFloors)
 
     It deliberately does NOT add indexers. Which indexers you use, and whether
     you are entitled to what you pull from them, is your call to make.
@@ -245,8 +247,8 @@ if ($ApplyQualityFloors) {
     }
 
     # Release profile that rejects releases advertising an executable payload.
-    # Sonarr exposes this as /releaseprofile; Radarr has no equivalent endpoint,
-    # so there it stays a manual custom format.
+    # Sonarr exposes this as /releaseprofile; Radarr has no such endpoint, so the
+    # same protection is built there as a custom format instead - see below.
     try {
         $ignored = @('.exe', '.scr', '.bat', '.cmd', '.msi', '.lnk', '.vbs', '.pif')
         $existing = Invoke-ArrApi -BaseUrl $hostUrl.sonarr -ApiKey $apiKey.sonarr -Path '/api/v3/releaseprofile'
@@ -270,6 +272,77 @@ if ($ApplyQualityFloors) {
     }
     catch {
         Write-Fail "sonarr release profile: $($_.Exception.Message)"
+    }
+
+    # The Radarr half of the same protection. Radarr has no release profile, so
+    # the filter is a custom format scored far below the quality profile's
+    # minimum: any release whose title advertises an executable scores -10000,
+    # which is under the default minFormatScore of 0, so it is rejected.
+    #
+    # Specifications inside one custom format are ANDed, so a single
+    # ReleaseTitleSpecification with an alternation matches any of the
+    # extensions. The specification is taken from /customformat/schema for the
+    # same reason providers are: the field list is the app's to define, not ours.
+    try {
+        $cfName = 'block-executables'
+        $cfPattern = '\.(exe|scr|bat|cmd|msi|lnk|vbs|pif)\b'
+
+        $existingFormats = Invoke-ArrApi -BaseUrl $hostUrl.radarr -ApiKey $apiKey.radarr -Path '/api/v3/customformat'
+        $cf = $null
+        foreach ($f in @($existingFormats)) { if ($f -and $f.name -eq $cfName) { $cf = $f } }
+
+        if ($cf -eq $null) {
+            $schemas = Invoke-ArrApi -BaseUrl $hostUrl.radarr -ApiKey $apiKey.radarr -Path '/api/v3/customformat/schema'
+            $spec = $null
+            foreach ($s in @($schemas)) {
+                if ($s.implementation -eq 'ReleaseTitleSpecification') { $spec = $s; break }
+            }
+            if ($spec -eq $null) { throw "no ReleaseTitleSpecification in /api/v3/customformat/schema" }
+
+            $spec.name = 'executable payload'
+            $spec | Add-Member -NotePropertyName 'negate' -NotePropertyValue $false -Force
+            $spec | Add-Member -NotePropertyName 'required' -NotePropertyValue $true -Force
+            foreach ($field in @($spec.fields)) {
+                if ($field.name -eq 'value') {
+                    $field | Add-Member -NotePropertyName 'value' -NotePropertyValue $cfPattern -Force
+                }
+            }
+
+            $cfBody = @{
+                name                           = $cfName
+                includeCustomFormatWhenRenaming = $false
+                specifications                 = @($spec)
+            }
+            $cf = Invoke-ArrApi -BaseUrl $hostUrl.radarr -ApiKey $apiKey.radarr -Path '/api/v3/customformat' -Method POST -Body $cfBody
+            Write-Ok "radarr: custom format '$cfName' created"
+        }
+        else {
+            Write-Info "radarr: custom format '$cfName' already present"
+        }
+
+        # Creating the format changes nothing on its own - it only rejects once
+        # it carries a negative score inside each quality profile.
+        $profiles = Invoke-ArrApi -BaseUrl $hostUrl.radarr -ApiKey $apiKey.radarr -Path '/api/v3/qualityprofile'
+        $scored = 0
+        foreach ($qualityProfile in @($profiles)) {
+            $needsSave = $false
+            foreach ($item in @($qualityProfile.formatItems)) {
+                if ($item.format -eq $cf.id -and $item.score -ne -10000) {
+                    $item | Add-Member -NotePropertyName 'score' -NotePropertyValue -10000 -Force
+                    $needsSave = $true
+                }
+            }
+            if ($needsSave) {
+                $null = Invoke-ArrApi -BaseUrl $hostUrl.radarr -ApiKey $apiKey.radarr `
+                    -Path "/api/v3/qualityprofile/$($qualityProfile.id)" -Method PUT -Body $qualityProfile
+                $scored++
+            }
+        }
+        if ($scored -gt 0) { Write-Ok "radarr: $cfName scored in $scored quality profile(s)" }
+        else { Write-Info "radarr: quality profiles already scored" }
+    }
+    catch {
+        Write-Fail "radarr custom format: $($_.Exception.Message)"
     }
 }
 

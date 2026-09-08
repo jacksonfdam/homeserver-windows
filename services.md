@@ -176,8 +176,13 @@ list. `Wire-Services.ps1 -ApplyQualityFloors` creates one for executables.
 
 Root folder `/data/media/movies`. Same quality-floor problem as Sonarr: every
 quality definition ships with a minimum size of zero, which lets a 600 MB file
-claim to be 2160p. `-ApplyQualityFloors` fixes that. Radarr has no release
-profile endpoint, so the executable filter there stays a manual custom format.
+claim to be 2160p. `-ApplyQualityFloors` fixes that.
+
+Radarr has no release profile endpoint, so the executable filter is a custom
+format instead: one release-title specification matching
+`\.(exe|scr|bat|cmd|msi|lnk|vbs|pif)\b`, scored -10000 in every quality
+profile. Anything below the profile's `minFormatScore` — 0 by default — is
+rejected, so the effect matches Sonarr's release profile.
 
 ### Lidarr — 8686 (music)
 
