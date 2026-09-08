@@ -1,0 +1,284 @@
+# Home media server stack for Docker Desktop on Windows (WSL2 backend).
+#
+# Adapted from https://github.com/akitaonrails/plex_home_server_docker
+# Key differences from the original Linux/NAS setup are documented in README.md:
+#   - one single /data mount per container instead of separate /downloads + /movies + /tv
+#   - no /dev/dri passthrough (does not exist on Windows), no network_mode: host
+#   - forward-slash paths in .env (C:/media, not C:\media)
+#
+# Profiles:
+#   default    -> qbittorrent prowlarr sonarr radarr lidarr bazarr jellyfin jellyseerr komga kavita
+#   plex       -> Plex Media Server instead of / alongside Jellyfin
+#   usenet     -> SABnzbd
+#   utils      -> Portainer, Watchtower
+
+name: homeserver
+
+x-common-env: &common-env
+  PUID: ${PUID:-1000}
+  PGID: ${PGID:-1000}
+  TZ: ${TZ:-Europe/Stockholm}
+  UMASK: ${UMASK:-002}
+
+x-restart: &restart
+  restart: unless-stopped
+
+networks:
+  homeserver:
+    name: homeserver
+    driver: bridge
+
+services:
+  # ---------------------------------------------------------------- downloaders
+  qbittorrent:
+    <<: *restart
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    networks: [homeserver]
+    environment:
+      <<: *common-env
+      WEBUI_PORT: 8080
+      TORRENTING_PORT: ${QBT_TORRENT_PORT:-6881}
+    volumes:
+      - ${CONFIG_ROOT}/qbittorrent:/config
+      - ${DATA_ROOT}:/data
+    ports:
+      - "${QBT_WEBUI_PORT:-8080}:8080"
+      - "${QBT_TORRENT_PORT:-6881}:${QBT_TORRENT_PORT:-6881}/tcp"
+      - "${QBT_TORRENT_PORT:-6881}:${QBT_TORRENT_PORT:-6881}/udp"
+
+  sabnzbd:
+    <<: *restart
+    image: lscr.io/linuxserver/sabnzbd:latest
+    container_name: sabnzbd
+    profiles: [usenet]
+    networks: [homeserver]
+    environment: *common-env
+    volumes:
+      - ${CONFIG_ROOT}/sabnzbd:/config
+      - ${DATA_ROOT}:/data
+    ports:
+      - "${SABNZBD_PORT:-8085}:8080"
+
+  # ------------------------------------------------------------------ indexers
+  prowlarr:
+    <<: *restart
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    networks: [homeserver]
+    environment: *common-env
+    volumes:
+      - ${CONFIG_ROOT}/prowlarr:/config
+    ports:
+      - "${PROWLARR_PORT:-9696}:9696"
+
+  # ----------------------------------------------------------------- librarians
+  sonarr:
+    <<: *restart
+    image: lscr.io/linuxserver/sonarr:latest
+    container_name: sonarr
+    networks: [homeserver]
+    depends_on: [qbittorrent]
+    environment: *common-env
+    volumes:
+      - ${CONFIG_ROOT}/sonarr:/config
+      - ${DATA_ROOT}:/data
+    ports:
+      - "${SONARR_PORT:-8989}:8989"
+
+  radarr:
+    <<: *restart
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    networks: [homeserver]
+    depends_on: [qbittorrent]
+    environment: *common-env
+    volumes:
+      - ${CONFIG_ROOT}/radarr:/config
+      - ${DATA_ROOT}:/data
+    ports:
+      - "${RADARR_PORT:-7878}:7878"
+
+  lidarr:
+    <<: *restart
+    image: lscr.io/linuxserver/lidarr:latest
+    container_name: lidarr
+    networks: [homeserver]
+    depends_on: [qbittorrent]
+    environment: *common-env
+    volumes:
+      - ${CONFIG_ROOT}/lidarr:/config
+      - ${DATA_ROOT}:/data
+    ports:
+      - "${LIDARR_PORT:-8686}:8686"
+
+  bazarr:
+    <<: *restart
+    image: lscr.io/linuxserver/bazarr:latest
+    container_name: bazarr
+    networks: [homeserver]
+    depends_on: [sonarr, radarr]
+    environment: *common-env
+    volumes:
+      - ${CONFIG_ROOT}/bazarr:/config
+      - ${DATA_ROOT}:/data
+    ports:
+      - "${BAZARR_PORT:-6767}:6767"
+
+  # -------------------------------------------------------------------- players
+  jellyfin:
+    <<: *restart
+    image: lscr.io/linuxserver/jellyfin:latest
+    container_name: jellyfin
+    networks: [homeserver]
+    environment:
+      <<: *common-env
+      JELLYFIN_PublishedServerUrl: http://${HOST_IP:-localhost}:${JELLYFIN_PORT:-8096}
+    volumes:
+      - ${CONFIG_ROOT}/jellyfin:/config
+      - ${DATA_ROOT}/media:/data/media:ro
+      - ${CACHE_ROOT:-./cache}/jellyfin-transcode:/config/transcode
+    ports:
+      - "${JELLYFIN_PORT:-8096}:8096"
+    # NVIDIA NVENC only. Requires a current NVIDIA driver on Windows + WSL2 GPU support.
+    # Intel QuickSync / VAAPI is NOT available to containers on Windows: there is no /dev/dri.
+    # Uncomment to enable, then set hardware acceleration to NVENC in Jellyfin.
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  plex:
+    <<: *restart
+    image: plexinc/pms-docker:latest
+    container_name: plex
+    profiles: [plex]
+    networks: [homeserver]
+    environment:
+      <<: *common-env
+      # network_mode: host is unavailable on Docker Desktop for Windows, so GDM
+      # auto-discovery does not work. ADVERTISE_IP + a claim token replace it.
+      ADVERTISE_IP: http://${HOST_IP:-localhost}:32400/
+      PLEX_CLAIM: ${PLEX_CLAIM:-}
+      PLEX_UID: ${PUID:-1000}
+      PLEX_GID: ${PGID:-1000}
+    volumes:
+      - ${CONFIG_ROOT}/plex:/config
+      - ${DATA_ROOT}/media:/data/media:ro
+      - ${CACHE_ROOT:-./cache}/plex-transcode:/transcode
+    ports:
+      - "32400:32400"
+      - "3005:3005"
+      - "8324:8324"
+      - "32469:32469"
+      - "1900:1900/udp"
+      - "32410:32410/udp"
+      - "32412:32412/udp"
+      - "32413:32413/udp"
+      - "32414:32414/udp"
+    # See the NVENC note on jellyfin above.
+
+  jellyseerr:
+    <<: *restart
+    image: fallenbagel/jellyseerr:latest
+    container_name: jellyseerr
+    networks: [homeserver]
+    depends_on: [sonarr, radarr]
+    environment:
+      TZ: ${TZ:-Europe/Stockholm}
+      PORT: 5055
+    volumes:
+      - ${CONFIG_ROOT}/jellyseerr:/app/config
+    ports:
+      - "${JELLYSEERR_PORT:-5055}:5055"
+
+  # --------------------------------------------------------- comics / manga / books
+  komga:
+    <<: *restart
+    image: ghcr.io/gotson/komga:latest
+    container_name: komga
+    networks: [homeserver]
+    user: "${PUID:-1000}:${PGID:-1000}"
+    environment:
+      TZ: ${TZ:-Europe/Stockholm}
+    volumes:
+      - ${CONFIG_ROOT}/komga:/config
+      - ${DATA_ROOT}/media/comics:/data/comics
+      - ${DATA_ROOT}/media/manga:/data/manga
+      - ${DATA_ROOT}/media/books:/data/books
+    ports:
+      - "${KOMGA_PORT:-25600}:25600"
+
+  kavita:
+    <<: *restart
+    image: jvmilazz0/kavita:latest
+    container_name: kavita
+    networks: [homeserver]
+    environment:
+      TZ: ${TZ:-Europe/Stockholm}
+    volumes:
+      - ${CONFIG_ROOT}/kavita:/kavita/config
+      - ${DATA_ROOT}/media/manga:/manga
+      - ${DATA_ROOT}/media/comics:/comics
+      - ${DATA_ROOT}/media/books:/books
+    ports:
+      - "${KAVITA_PORT:-5001}:5000"
+
+  # ---------------------------------------------------------------- dashboard
+  homepage:
+    <<: *restart
+    image: ghcr.io/gethomepage/homepage:latest
+    container_name: homepage
+    networks: [homeserver]
+    environment:
+      <<: *common-env
+      # Required since v1.0 or the page refuses to render. Must list every
+      # host:port you will open it from.
+      HOMEPAGE_ALLOWED_HOSTS: ${HOMEPAGE_ALLOWED_HOSTS:-localhost:3000}
+      # Referenced as {{HOMEPAGE_VAR_*}} inside services.yaml so credentials
+      # stay in .env instead of the config files.
+      HOMEPAGE_VAR_JELLYFIN_KEY: ${HOMEPAGE_VAR_JELLYFIN_KEY:-}
+      HOMEPAGE_VAR_KOMGA_USER: ${HOMEPAGE_VAR_KOMGA_USER:-}
+      HOMEPAGE_VAR_KOMGA_PASSWORD: ${HOMEPAGE_VAR_KOMGA_PASSWORD:-}
+      HOMEPAGE_VAR_KAVITA_USER: ${HOMEPAGE_VAR_KAVITA_USER:-}
+      HOMEPAGE_VAR_KAVITA_PASSWORD: ${HOMEPAGE_VAR_KAVITA_PASSWORD:-}
+      HOMEPAGE_VAR_QBT_USER: ${HOMEPAGE_VAR_QBT_USER:-admin}
+      HOMEPAGE_VAR_QBT_PASSWORD: ${HOMEPAGE_VAR_QBT_PASSWORD:-}
+    volumes:
+      - ${CONFIG_ROOT}/homepage:/app/config
+    ports:
+      - "${HOMEPAGE_PORT:-3000}:3000"
+
+  # ---------------------------------------------------------------------- utils
+  portainer:
+    <<: *restart
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    profiles: [utils]
+    networks: [homeserver]
+    volumes:
+      - portainer_data:/data
+      # Docker Desktop exposes the engine socket inside WSL2 at this path.
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "${PORTAINER_PORT:-9000}:9000"
+
+  watchtower:
+    <<: *restart
+    image: containrrr/watchtower:latest
+    container_name: watchtower
+    profiles: [utils]
+    networks: [homeserver]
+    environment:
+      TZ: ${TZ:-Europe/Stockholm}
+      WATCHTOWER_CLEANUP: "true"
+      WATCHTOWER_SCHEDULE: "0 0 4 * * *"
+      WATCHTOWER_LABEL_ENABLE: "false"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+volumes:
+  portainer_data:
