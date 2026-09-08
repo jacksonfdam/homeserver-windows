@@ -167,8 +167,11 @@ built-in progress sync.
    releases came from.
 5. Points Bazarr at Sonarr and Radarr.
 6. With `-ApplyQualityFloors`: sets a minimum size per quality definition (they
-   all ship at zero, which lets a 600 MB file pass as 2160p) and adds a Sonarr
-   release profile that rejects releases advertising `.exe`, `.scr` and friends.
+   all ship at zero, which lets a 600 MB file pass as 2160p) and rejects releases
+   advertising `.exe`, `.scr` and friends. Sonarr gets a release profile for
+   this; Radarr has no such endpoint, so it gets a custom format scored at
+   -10000, far under the default minimum of 0, which rejects the release just
+   the same.
 
 Instead of hardcoding provider field lists, it fetches each app's
 `/schema` endpoint and overrides only the fields it cares about. That is the
