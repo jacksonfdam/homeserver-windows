@@ -6,6 +6,10 @@ and published at [akitaonrails/plex_home_server_docker](https://github.com/akita
 plus [Komga](https://komga.org/docs/introduction) and [Kavita](https://www.kavitareader.com/)
 for comics, manga and ebooks.
 
+Manga metadata and the cross-tracker ID map come from
+[MangaBaka](https://mangabaka.org/), whose database is licensed
+[CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/).
+
 The original runs on Ubuntu on an Intel NUC with a Synology NAS mounted at
 `/mnt/terachad`. That setup does not translate line by line to Docker Desktop on
 Windows, and most of the work here is in the parts that differ.
@@ -15,6 +19,7 @@ scripts/Setup-HomeServer.ps1    preflight -> folders -> .env -> compose up -> wi
 scripts/Wire-Services.ps1       connects the services to each other via their APIs
 scripts/New-Dashboard.ps1       generates the Homepage dashboard config
 scripts/Import-MangaLists.ps1   MangaDex / MangaFire lists -> Komga or Kavita
+scripts/Update-MangaBaka.ps1    mirrors the MangaBaka series database (Scheduled Task)
 scripts/Clear-StalledQueue.ps1  daily cleanup of dead downloads (Scheduled Task)
 scripts/_Common.ps1             shared helpers
 docker-compose.yml              the stack
