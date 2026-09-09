@@ -120,6 +120,78 @@ under `[misc]`, set `unwanted_extensions` to the same list and
 6. `.\scripts\Import-MangaLists.ps1` — see [manga-lists.md](manga-lists.md).
 7. Optional: `Setup-HomeServer.ps1 -RegisterTasks` for the two daily jobs.
 
+## From a title to a playable file
+
+The thing that trips people first: **you never search in qBittorrent.** It has a
+search tab and it is not part of this. qBittorrent only ever receives a magnet
+and downloads it. The searching is done by Radarr and Sonarr, against the
+indexers Prowlarr manages.
+
+### Three things have to be done by hand first
+
+None of these can be automated, and until all three are done the flow looks
+broken rather than unconfigured.
+
+1. **Indexers in Prowlarr.** *Indexers > Add Indexer*, filter by privacy Public
+   and the categories you care about, add what looks useful, then **Sync App
+   Indexers**. With none, a search returns nothing at all — which reads exactly
+   like a bug. Prowlarr showing `0 QUERIES` on the dashboard is this.
+2. **Libraries in Jellyfin.** Its first-run wizard wants an admin account and
+   paths: `/data/media/movies`, `/data/media/tv`, `/data/media/anime`. A Jellyfin
+   reporting zero of everything has no libraries, not no files.
+3. **A Jellyseerr login,** if you want it. It is the nice front door for
+   requesting, and it needs to sign in to Jellyfin before it will accept Sonarr
+   and Radarr. Skipping it costs nothing — searching directly in Radarr and
+   Sonarr does the same work.
+
+### Asking for a film
+
+*Radarr > Movies > Add New*, type the title, pick it from the list. Then choose a
+quality profile, set the root folder to `/data/media/movies`, and tick **Start
+search for missing movie** before adding — without that it is monitored but
+nothing happens until the next scheduled search.
+
+### Asking for a series, and the one anime detail
+
+*Sonarr > Series > Add New*, same idea, root folder `/data/media/tv` — or
+`/data/media/anime`, which exists as a separate root folder on purpose.
+
+For anime, set **Series Type: Anime** on the series. Anime releases are numbered
+absolutely rather than by season and episode, and without this the release names
+do not match what Sonarr is looking for, so it finds nothing and looks like an
+indexer problem.
+
+### What happens next, and where the file is at each point
+
+1. Radarr or Sonarr queries every indexer Prowlarr synced to it.
+2. It picks a release, in this order: quality, then custom format score, then
+   protocol, indexer priority, indexer flags, seeds and peers, size. Quality
+   wins first — see [tuning.md](tuning.md) if a release you expected loses.
+3. The magnet goes to qBittorrent under the category for that app: `radarr`,
+   `tv-sonarr` or `lidarr`, so the queues never mix.
+4. qBittorrent downloads into `/data/torrents/movies`, `/tv` or `/music`. It is
+   visible in its own UI at this stage, and in the *arr app's Activity > Queue.
+5. On completion the *arr app imports it: renames it and moves it into
+   `/data/media/...`. On this stack that is a copy rather than a hardlink, so the
+   file briefly exists twice — see [windows.md](windows.md#one-root-path-and-why-it-matters).
+6. Jellyfin picks it up on its next scan. If it does not, the library path is
+   wrong or the file name is unparseable.
+
+Nothing here needs babysitting. If it stalls, `Clear-StalledQueue.ps1` clears
+dead entries and blocklists the release so the app looks for another source.
+
+### Manga does not work this way yet
+
+Komga and Kavita display what is in `/data/media/manga`, but **nothing in this
+stack searches for or downloads manga.** `Import-MangaLists.ps1` compares a
+MangaDex or MangaFire list against what is already in your library and writes a
+CSV of what is missing — a shopping list, not a queue.
+
+The design for closing that is in [manga-anime-sync.md](manga-anime-sync.md).
+Komga and Kavita still need their libraries created in their own first-run
+wizards, pointed at `/data/media/manga`, `/data/media/comics` and
+`/data/media/books`.
+
 ## When something does not work
 
 | Symptom | Usual cause |

@@ -77,6 +77,12 @@ while LAN clients still get a prompt.
 Then open the dashboard on `http://localhost:3000`, and use
 `.\scripts\Start-HomeServerConsole.ps1` for everything afterwards.
 
+For how a title you type turns into a file you can watch — and the three things
+that have to be done by hand before any of it works — see
+[From a title to a playable file](docs/services.md#from-a-title-to-a-playable-file).
+The short version: you never search in qBittorrent. Radarr and Sonarr do the
+searching, against the indexers Prowlarr manages.
+
 ## Where to go next
 
 | | |
