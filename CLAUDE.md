@@ -30,6 +30,7 @@ scripts/Update-MangaBaka.ps1         mirrors the MangaBaka SQLite dump locally
 scripts/Get-HomeServerStatus.ps1     read-only report of what is configured and running
 scripts/Start-HomeServerConsole.ps1  interactive console: same state, plus acting on it
 scripts/Clear-StalledQueue.ps1       removes dead downloads, meant as a Scheduled Task
+scripts/Test-Common.ps1              parses every script, smoke-tests the pure helpers
 docs/services.md                     per-service reference: ports, access, integration
 docs/tuning.md                       automated vs manual vs deliberately-not-done settings
 docs/manga-lists.md                  the list import flow
@@ -134,8 +135,17 @@ python3 -c "import yaml; yaml.safe_load(open('docker-compose.yml'))"   # compose
 docker compose config                                                  # interpolation resolves
 ```
 
-For PowerShell, `Invoke-ScriptAnalyzer` on the Windows box. The scripts have no
-tests; they are verified by running them against a live stack.
+For PowerShell, run the smoke test on the Windows box before shipping:
+
+```powershell
+.\scripts\Test-Common.ps1
+```
+
+It parses every script and exercises the pure helpers, and exits 1 on failure.
+It covers the two classes that have actually broken here and that reading cannot
+catch: parse errors, and parameter binding. Everything needing Docker or HTTP is
+still verified by running the real scripts against a live stack.
+`Invoke-ScriptAnalyzer` remains worth a pass.
 
 From a machine with no PowerShell, brace and paren balance is the floor, plus one
 check worth running every time because it is a parse error rather than a runtime

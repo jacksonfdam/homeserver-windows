@@ -23,6 +23,7 @@ scripts/Update-MangaBaka.ps1         mirrors the MangaBaka series database (Sche
 scripts/Get-HomeServerStatus.ps1     what is configured, what is not, what to run next
 scripts/Start-HomeServerConsole.ps1  interactive console: the same state, plus acting on it
 scripts/Clear-StalledQueue.ps1       daily cleanup of dead downloads (Scheduled Task)
+scripts/Test-Common.ps1              parse check + smoke test for the shared helpers
 scripts/_Common.ps1                  shared helpers
 docker-compose.yml                   the stack
 .env.example                         paths, ports, timezone
