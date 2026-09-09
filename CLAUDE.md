@@ -144,18 +144,7 @@ most useful thing in the repo.
 
 ## Known issues in the current tree
 
-- **`.env.example` ships a populated `KOMGA_API_KEY`.** A real-looking value is
-  committed in the example file (and in `.env`). Treat it as leaked: rotate it in
-  Komga and blank the field in the example rather than copying it forward.
-- **`.env2.example` is a byte-identical copy of `.env.example`.** No script reads
-  it. Delete it unless it is meant to grow into something.
-- **`docker-compose.old.yml` is a pre-Homepage snapshot.** It differs from the
-  live file only by the missing `homepage` service. Edit `docker-compose.yml`;
-  the old one is kept for reference and is not maintained.
-- **A repo-wide case-insensitive `d:` -> `C:` replace once corrupted this tree.**
-  It has been repaired (`PUIC`/`PGIC` -> `PUID`/`PGID`, service and image
-  `sabnzbC` -> `sabnzbd`, `HOMEPAGE_VAR_*_PASSWORC` -> `_PASSWORD`, plus prose in
-  the scripts and docs). Both compose files parse and `docker compose config`
-  resolves. Worth knowing because the damage was invisible to YAML validation —
-  the file parsed fine, it just named an image that does not exist. Drive letters
-  were left alone: the Windows host really is on `C:`.
+- **A case-insensitive `d:` -> `C:` replace once corrupted this tree**, turning
+  `PUID` into `PUIC` and the `sabnzbd` image into one that does not exist. It is
+  repaired. Worth remembering only because YAML validation caught none of it —
+  the file parsed fine, it just named a missing image.
