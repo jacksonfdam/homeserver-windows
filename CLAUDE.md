@@ -98,8 +98,15 @@ re-verify rather than guessing:
   100. Rate limit is roughly 5 req/s, hence the 250 ms sleep.
 - **Homepage** requires `HOMEPAGE_ALLOWED_HOSTS` since v1.0 or it renders blank.
   Widget `url` must be the container name; `href` must be the host address.
-  Komga/Kavita widgets take username+password, Jellyfin takes an API key, and the
-  Kavita account needs the Admin role or the stats endpoint 403s.
+  Komga and Kavita widgets each take **either** an API key or username+password,
+  and the key is what their UIs actually hand you - Kavita shows it inside the
+  OPDS URL, Komga under Account settings. Jellyfin takes an API key. The Kavita
+  account needs the Admin role either way, or the stats endpoint refuses.
+  A widget whose credential is missing or wrong does not degrade: Homepage
+  proxies the call, the app answers 401 in plain text, Homepage runs JSON.parse
+  over it and throws, and the whole page then fails to render with a client-side
+  error naming no widget. New-Dashboard.ps1 therefore omits a widget rather than
+  writing one it cannot credential.
 - **qBittorrent** 4.6.1+ generates a random temporary WebUI password on first
   start and logs it. `admin`/`adminadmin` is no longer the default. The seed
   config relies on `WebUI\AuthSubnetWhitelist=172.16.0.0/12` (Docker bridge only)
