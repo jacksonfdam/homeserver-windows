@@ -7,6 +7,12 @@
     CONFIG_ROOT\homepage, with the Sonarr/Radarr/Lidarr/Prowlarr/Bazarr API keys
     read straight out of the running containers.
 
+    A widget is only written once every credential it needs is present. A
+    missing one costs you that widget and says so, instead of costing you the
+    dashboard: Homepage proxies the call server-side, the app answers 401 in
+    plain text, Homepage runs JSON.parse over it and throws, and the page then
+    fails to render with a client-side error naming no widget at all.
+
     Credentials that cannot be read automatically (Jellyfin, Komga, Kavita,
     qBittorrent) are emitted as {{HOMEPAGE_VAR_*}} placeholders. Fill the
     matching entries in .env and the values never touch the config files.
@@ -75,6 +81,124 @@ function Write-HomepageFile {
     Write-Ok "wrote $Name"
 }
 
+# A widget whose credential is missing does not degrade quietly. Homepage proxies
+# the call server-side, the app answers with a plain-text error, Homepage runs
+# JSON.parse over it and throws - and the page then fails to render at all, with
+# a client-side "Cannot read properties of undefined" and no clue as to which
+# widget caused it. Observed with Kavita answering 401 in text.
+#
+# So a widget is only written once every credential it needs is actually present.
+# A missing credential costs you that one widget instead of the dashboard.
+function Get-WidgetOrNothing {
+    param(
+        [Parameter(Mandatory = $true)][string]$Block,
+        [Parameter(Mandatory = $true)][string]$For,
+        [Parameter(Mandatory = $true)][string[]]$RequiredKeys
+    )
+    foreach ($k in $RequiredKeys) {
+        if (-not (Get-EnvOrDefault -Conf $conf -Key $k -Default '')) {
+            Write-Warn "$For widget skipped: $k is empty in .env"
+            return ''
+        }
+    }
+    return $Block
+}
+
+# The *arr keys are read out of the running containers, so they come back empty
+# when a container is not up. Same hazard: an empty key means a 401 answered in
+# text, which is what breaks the render.
+function Get-KeyedWidget {
+    param(
+        [Parameter(Mandatory = $true)][string]$Block,
+        [Parameter(Mandatory = $true)][string]$For,
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Key
+    )
+    if (-not $Key) {
+        Write-Warn "$For widget skipped: its API key could not be read"
+        return ''
+    }
+    return $Block
+}
+
+$jellyfinWidget = Get-WidgetOrNothing -For 'Jellyfin' -RequiredKeys @('HOMEPAGE_VAR_JELLYFIN_KEY') -Block @"
+
+        widget:
+          type: jellyfin
+          url: http://jellyfin:8096
+          key: {{HOMEPAGE_VAR_JELLYFIN_KEY}}
+          enableBlocks: true
+          enableNowPlaying: true
+"@
+
+$komgaWidget = Get-WidgetOrNothing -For 'Komga' -RequiredKeys @('HOMEPAGE_VAR_KOMGA_USER', 'HOMEPAGE_VAR_KOMGA_PASSWORD') -Block @"
+
+        widget:
+          type: komga
+          url: http://komga:25600
+          username: {{HOMEPAGE_VAR_KOMGA_USER}}
+          password: {{HOMEPAGE_VAR_KOMGA_PASSWORD}}
+"@
+
+$kavitaWidget = Get-WidgetOrNothing -For 'Kavita' -RequiredKeys @('HOMEPAGE_VAR_KAVITA_USER', 'HOMEPAGE_VAR_KAVITA_PASSWORD') -Block @"
+
+        widget:
+          type: kavita
+          url: http://kavita:5000
+          username: {{HOMEPAGE_VAR_KAVITA_USER}}
+          password: {{HOMEPAGE_VAR_KAVITA_PASSWORD}}
+"@
+
+$qbtWidget = Get-WidgetOrNothing -For 'qBittorrent' -RequiredKeys @('HOMEPAGE_VAR_QBT_USER', 'HOMEPAGE_VAR_QBT_PASSWORD') -Block @"
+
+        widget:
+          type: qbittorrent
+          url: http://qbittorrent:8080
+          username: {{HOMEPAGE_VAR_QBT_USER}}
+          password: {{HOMEPAGE_VAR_QBT_PASSWORD}}
+"@
+
+$sonarrWidget = Get-KeyedWidget -For 'Sonarr' -Key $keys['sonarr'] -Block @"
+
+        widget:
+          type: sonarr
+          url: http://sonarr:8989
+          key: $($keys['sonarr'])
+          enableQueue: true
+"@
+
+$radarrWidget = Get-KeyedWidget -For 'Radarr' -Key $keys['radarr'] -Block @"
+
+        widget:
+          type: radarr
+          url: http://radarr:7878
+          key: $($keys['radarr'])
+          enableQueue: true
+"@
+
+$lidarrWidget = Get-KeyedWidget -For 'Lidarr' -Key $keys['lidarr'] -Block @"
+
+        widget:
+          type: lidarr
+          url: http://lidarr:8686
+          key: $($keys['lidarr'])
+"@
+
+$prowlarrWidget = Get-KeyedWidget -For 'Prowlarr' -Key $keys['prowlarr'] -Block @"
+
+        widget:
+          type: prowlarr
+          url: http://prowlarr:9696
+          key: $($keys['prowlarr'])
+"@
+
+$bazarrWidget = Get-KeyedWidget -For 'Bazarr' -Key $bazarrKey -Block @"
+
+        widget:
+          type: bazarr
+          url: http://bazarr:6767
+          key: $bazarrKey
+"@
+
 Write-Step "Writing dashboard config"
 
 $settings = @"
@@ -121,13 +245,7 @@ $services = @"
     - Jellyfin:
         icon: jellyfin.png
         href: http://${hostIp}:$(Get-EnvOrDefault -Conf $conf -Key 'JELLYFIN_PORT' -Default '8096')
-        description: Movies, TV and anime
-        widget:
-          type: jellyfin
-          url: http://jellyfin:8096
-          key: {{HOMEPAGE_VAR_JELLYFIN_KEY}}
-          enableBlocks: true
-          enableNowPlaying: true
+        description: Movies, TV and anime$jellyfinWidget
 
     - Plex:
         icon: plex.png
@@ -138,22 +256,12 @@ $services = @"
     - Komga:
         icon: komga.png
         href: http://${hostIp}:$(Get-EnvOrDefault -Conf $conf -Key 'KOMGA_PORT' -Default '25600')
-        description: Manga and comics
-        widget:
-          type: komga
-          url: http://komga:25600
-          username: {{HOMEPAGE_VAR_KOMGA_USER}}
-          password: {{HOMEPAGE_VAR_KOMGA_PASSWORD}}
+        description: Manga and comics$komgaWidget
 
     - Kavita:
         icon: kavita.png
         href: http://${hostIp}:$(Get-EnvOrDefault -Conf $conf -Key 'KAVITA_PORT' -Default '5001')
-        description: Manga, comics and ebooks
-        widget:
-          type: kavita
-          url: http://kavita:5000
-          username: {{HOMEPAGE_VAR_KAVITA_USER}}
-          password: {{HOMEPAGE_VAR_KAVITA_PASSWORD}}
+        description: Manga, comics and ebooks$kavitaWidget
 
 - Discover:
     - Jellyseerr:
@@ -165,60 +273,33 @@ $services = @"
     - Sonarr:
         icon: sonarr.png
         href: http://${hostIp}:$(Get-EnvOrDefault -Conf $conf -Key 'SONARR_PORT' -Default '8989')
-        description: TV and anime
-        widget:
-          type: sonarr
-          url: http://sonarr:8989
-          key: $($keys['sonarr'])
-          enableQueue: true
+        description: TV and anime$sonarrWidget
 
     - Radarr:
         icon: radarr.png
         href: http://${hostIp}:$(Get-EnvOrDefault -Conf $conf -Key 'RADARR_PORT' -Default '7878')
-        description: Movies
-        widget:
-          type: radarr
-          url: http://radarr:7878
-          key: $($keys['radarr'])
-          enableQueue: true
+        description: Movies$radarrWidget
 
     - Lidarr:
         icon: lidarr.png
         href: http://${hostIp}:$(Get-EnvOrDefault -Conf $conf -Key 'LIDARR_PORT' -Default '8686')
-        description: Music
-        widget:
-          type: lidarr
-          url: http://lidarr:8686
-          key: $($keys['lidarr'])
+        description: Music$lidarrWidget
 
     - Bazarr:
         icon: bazarr.png
         href: http://${hostIp}:$(Get-EnvOrDefault -Conf $conf -Key 'BAZARR_PORT' -Default '6767')
-        description: Subtitles
-        widget:
-          type: bazarr
-          url: http://bazarr:6767
-          key: $bazarrKey
+        description: Subtitles$bazarrWidget
 
 - Downloads:
     - qBittorrent:
         icon: qbittorrent.png
         href: http://${hostIp}:$(Get-EnvOrDefault -Conf $conf -Key 'QBT_WEBUI_PORT' -Default '8080')
-        description: Torrent client
-        widget:
-          type: qbittorrent
-          url: http://qbittorrent:8080
-          username: {{HOMEPAGE_VAR_QBT_USER}}
-          password: {{HOMEPAGE_VAR_QBT_PASSWORD}}
+        description: Torrent client$qbtWidget
 
     - Prowlarr:
         icon: prowlarr.png
         href: http://${hostIp}:$(Get-EnvOrDefault -Conf $conf -Key 'PROWLARR_PORT' -Default '9696')
-        description: Indexer manager
-        widget:
-          type: prowlarr
-          url: http://prowlarr:9696
-          key: $($keys['prowlarr'])
+        description: Indexer manager$prowlarrWidget
 "@
 
 $widgets = @"
