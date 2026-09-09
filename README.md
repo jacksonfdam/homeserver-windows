@@ -74,6 +74,9 @@ Optional service groups are Compose profiles:
 Re-running is safe. Every step checks before it writes, and the wiring script
 skips anything already registered.
 
+Once it is up, `scripts\Start-HomeServerConsole.ps1` is the front door for
+everything afterwards — see [Day 2](#day-2).
+
 ## The seven things that are different on Windows
 
 | Linux original | On Docker Desktop for Windows |
@@ -232,6 +235,35 @@ only. LAN clients still get a login prompt.
   bulk to the existing library.
 
 ## Day 2
+
+One prompt drives all of it:
+
+```powershell
+.\scripts\Start-HomeServerConsole.ps1
+```
+
+`status` reports what is configured, what is not, and what to run next. `up`,
+`down`, `restart`, `logs`, `open`, `wire`, `floors`, `naming`, `dashboard`,
+`mirror` and `clean` do the rest, and `help` lists them.
+
+Every command prints the equivalent command line before it runs. That makes the
+console a way to learn the scripts rather than a way to avoid them — and if it
+ever misbehaves, you copy what it printed and run that instead.
+
+Two commands refuse rather than surprise you. `naming` counts what the library
+already holds and makes you type the word out, because it renames every file on
+the next refresh and turning the setting back off does not undo it. `wire` will
+not run against a service that is not answering yet, since registering a
+provider in an app that has not finished starting is how half-configured stacks
+happen.
+
+For a shortcut or a script, one command and out:
+
+```powershell
+.\scripts\Start-HomeServerConsole.ps1 -Command status
+```
+
+Or by hand, which is what the console is calling anyway:
 
 ```powershell
 # status / logs
