@@ -296,3 +296,11 @@ bot protection, is not included.
 | Bazarr finds no subtitles | no providers, or items have no language profile |
 | playback stutters on good hardware | PGS subtitles being burned in; switch to an SRT track |
 | a service is unreachable after reboot | the data drive spun up after the containers started |
+| a container will not bind its port | the port is inside a range Windows reserves, see below |
+
+**Compose refuses to start a container: "an attempt was made to access a socket
+in a way forbidden by its access permissions".** Not a port conflict — nothing is
+listening. Hyper-V and WSL2 reserve ranges of dynamic ports and Windows blocks
+binding inside them. `netsh interface ipv4 show excludedportrange protocol=tcp`
+lists them; move the service to a port outside those ranges by editing its
+variable in `.env`. Port 9000, Portainer's default, is a frequent casualty.

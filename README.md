@@ -299,7 +299,22 @@ The two daily jobs — clearing dead downloads and refreshing the MangaBaka mirr
 Both run as you and only while you are logged on. Task Scheduler can change that,
 but it needs a stored password, so the script does not do it for you.
 
-Two Windows-specific things that will bite eventually:
+Three Windows-specific things that will bite eventually:
+
+- **Reserved port ranges.** Compose fails with *"an attempt was made to access a
+  socket in a way forbidden by its access permissions"* — which is not the port
+  being in use. Hyper-V and WSL2 reserve blocks of dynamic ports and Windows
+  refuses to bind inside them, with nothing listening. Port 9000 lands in one
+  often enough that Portainer hits it. See which ranges are taken:
+
+  ```powershell
+  netsh interface ipv4 show excludedportrange protocol=tcp
+  ```
+
+  Then pick a port outside them — every port in this stack is a variable in
+  `.env`, so `PORTAINER_PORT=9001` and re-running is the whole fix.
+  `net stop winnat` and `net start winnat` clears the reservations instead, but
+  needs admin and they come back after a reboot.
 
 - **WSL2 memory.** Docker Desktop will happily take most of your RAM. Cap it in
   `%UserProfile%\.wslconfig` with `[wsl2]` / `memory=8GB`.
