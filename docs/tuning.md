@@ -63,15 +63,14 @@ start.
 This one is not from the guides. It comes from the original article this port is
 based on, and it is the single most useful setting in the stack.
 
-### File and folder naming — not done
+### File and folder naming — automated with `-ApplyNaming`
 
-The guides are emphatic about this and the stack does nothing with it. Naming
-matters because the player reads the filename to catalogue the item, so getting
-it wrong means fixing metadata by hand forever.
+Naming matters because the player reads the filename to catalogue the item, so
+getting it wrong means fixing metadata by hand forever.
 
-What the guides set:
+What is set:
 
-- movies and series folders carry the IMDb id, so the player matches on the id
+- movie and series folders carry the IMDb id, so the player matches on the id
   rather than guessing from the title
 - rename on import is enabled, illegal characters are replaced, and the colon
   replacement is set to delete
@@ -80,18 +79,35 @@ What the guides set:
 - **the anime format additionally carries absolute episode numbering and the
   audio languages**, which is what makes an anime library sort correctly
 
-The anime part matters most here. Tracked in the naming issue.
+The anime case is the one that actually breaks without it. Rendered by a live
+Sonarr from the format that ships:
 
-### Propers and repacks — not done
+```
+The Series Title's! (2010) - S01E01 - 001 - Episode Title 1 [WEBDL-1080p v2][10bit][AVC][DTS 5.1][JA]-RlsGrp
+```
 
-The guides set this to *do not prefer*, so a PROPER does not jump ahead of the
-scoring you set up deliberately. One setting, not currently touched.
+It is behind its own switch, and off by default, because it enables renaming on
+import: on a fresh install that is the point, on an existing library it renames
+everything on the next refresh.
 
-### Recycle bin — not done
+One field-level trap, in case this ever needs editing:
+`colonReplacementFormat` is an integer in Sonarr and a string in Radarr.
 
-Torrents often carry extra files. With a recycle bin path set, the *arr app
-imports the media and sends the rest there, emptying it on a schedule you pick.
-Without one, that junk accumulates in the library.
+### Propers and repacks — automated with `-ApplyNaming`
+
+Set to *do not prefer*, so a PROPER does not jump ahead of the scoring set up
+deliberately.
+
+### Recycle bin — automated with `-ApplyNaming`
+
+Torrents often carry extra files. Both apps now import the media and send the
+rest to `/data/recycle`, cleaned out after 14 days. Without it that junk
+accumulates in the library.
+
+The folder is created by `Setup-HomeServer.ps1` because it has to be: both apps
+validate the path for existence and write access inside the container and reject
+the whole settings object otherwise. It sits beside `media/` and `torrents/` so
+deleting into it is a move rather than a copy.
 
 ---
 
@@ -131,16 +147,21 @@ will probably not work: the setting falls back to copying, so enabling it costs
 nothing and pays off if `DATA_ROOT` ever moves into the WSL2 filesystem.
 `Setup-HomeServer.ps1` probes whether hardlinks actually work and tells you.
 
-### Unwanted release formats — not done
+### Unwanted release formats — automated with `-ApplyQualityFloors`
 
-The guides import two custom formats from TRaSH Guides, both scored `-10000`:
+Two more custom formats in Radarr, both scored `-10000` and so under the default
+minimum of `0`, which refuses the release:
 
-- **BR-DISK** — full disc rips in ISO form. Enormous, and the player often will
-  not play them at all.
-- **3D** — half-OU and half-SBS releases, which look broken on a normal screen.
+- **BR-DISK** — whole-disc rips. Enormous, and most players will not play them.
+- **3D** — side-by-side and over-under, which look broken on a flat screen.
 
-Both are release-title matches, the same mechanism as the executable filter
-already built, so they fit the existing wiring rather than needing new machinery.
+Both are release-title matches, the same mechanism as the executable filter, and
+they live in the same table — adding another shape to reject is a row rather
+than another block of code.
+
+The idea of scoring unwanted release shapes into the floor comes from the TRaSH
+Guides. The patterns are this repository's own, and Radarr compiles them when
+the format is created, so a bad one fails loudly instead of matching nothing.
 
 ### Brazilian Portuguese dubbing — not done, and needs a decision first
 
