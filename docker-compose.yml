@@ -251,6 +251,10 @@ services:
       HOMEPAGE_VAR_KOMGA_PASSWORD: ${HOMEPAGE_VAR_KOMGA_PASSWORD:-}
       HOMEPAGE_VAR_KAVITA_USER: ${HOMEPAGE_VAR_KAVITA_USER:-}
       HOMEPAGE_VAR_KAVITA_PASSWORD: ${HOMEPAGE_VAR_KAVITA_PASSWORD:-}
+      # qBittorrent 5.2+ can issue an API key, which the widget takes instead of
+      # a login. Unlike Komga and Kavita there is no existing .env key to
+      # forward, so this one is its own variable.
+      HOMEPAGE_VAR_QBT_KEY: ${HOMEPAGE_VAR_QBT_KEY:-}
       HOMEPAGE_VAR_QBT_USER: ${HOMEPAGE_VAR_QBT_USER:-admin}
       HOMEPAGE_VAR_QBT_PASSWORD: ${HOMEPAGE_VAR_QBT_PASSWORD:-}
     volumes:
