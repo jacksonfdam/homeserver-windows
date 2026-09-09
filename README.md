@@ -23,8 +23,6 @@ docs/services.md                every service: ports, access, integration
 docs/manga-lists.md             importing reading lists
 ```
 
-docker logs qbittorrent | Select-String -Pattern "password"
-
 ## Prerequisites
 
 - Windows 10 21H2 / Windows 11
@@ -45,6 +43,18 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 
 .\scripts\Setup-HomeServer.ps1 -DataRoot C:\media -ConfigRoot C:\homeserver\config
 ```
+
+qBittorrent 4.6.1 and newer no longer ship with a default password — they
+generate a random one on first start and write it to the log. To log in the
+first time, read it out:
+
+```powershell
+docker logs qbittorrent | Select-String -Pattern "password"
+```
+
+Automation does not need it: `WebUI\AuthSubnetWhitelist` is set to the Docker
+bridge range, so the *arr containers reach the API without credentials while LAN
+clients still get a prompt.
 
 Optional service groups are Compose profiles:
 
