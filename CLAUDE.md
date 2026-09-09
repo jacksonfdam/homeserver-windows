@@ -122,6 +122,14 @@ re-verify rather than guessing:
   over it and throws, and the whole page then fails to render with a client-side
   error naming no widget. New-Dashboard.ps1 therefore omits a widget rather than
   writing one it cannot credential.
+- **A provider schema may have no `name` property**, and which ones do varies by
+  provider type inside a single API version: Prowlarr's
+  `/api/v1/downloadclient/schema` carries one, `/api/v1/applications/schema` does
+  not. `$obj.name = 'x'` throws on a `ConvertFrom-Json` object whose property
+  does not already exist, so `New-ProviderFromSchema` uses
+  `Add-Member -Force` throughout. Assigning directly worked for download clients
+  and failed for every application, which left Prowlarr with no apps registered
+  while reporting the rest of the wiring as fine.
 - **qBittorrent** 4.6.1+ generates a random temporary WebUI password on first
   start and logs it. `admin`/`adminadmin` is no longer the default. The seed
   config relies on `WebUI\AuthSubnetWhitelist=172.16.0.0/12` (Docker bridge only)

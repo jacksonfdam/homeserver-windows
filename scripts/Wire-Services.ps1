@@ -482,7 +482,9 @@ if ($ApplyQualityFloors) {
                 # is shared, and editing it in place would leak each pattern
                 # into the next format built from it.
                 $spec = $schemaTemplate | ConvertTo-Json -Depth 20 | ConvertFrom-Json
-                $spec.name = $fmt.specName
+                # Add-Member for the same reason as in New-ProviderFromSchema:
+                # the specification schema has no name until one is put on it.
+                $spec | Add-Member -NotePropertyName 'name' -NotePropertyValue $fmt.specName -Force
                 $spec | Add-Member -NotePropertyName 'negate' -NotePropertyValue $false -Force
                 $spec | Add-Member -NotePropertyName 'required' -NotePropertyValue $true -Force
                 foreach ($field in @($spec.fields)) {
