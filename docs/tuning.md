@@ -188,18 +188,33 @@ is an indexer**, and this stack does not configure indexers on purpose. Without
 it the other three have nothing to score, so the whole chain is a documented
 exception or it is nothing.
 
-### Subtitles — partly automated
+### Subtitles — automated with `-SubtitleLanguage`
 
-Bazarr is pointed at Sonarr and Radarr automatically. Everything else is manual,
-and Bazarr silently ignores any item without a language profile, so this is not
-optional:
+Bazarr is pointed at Sonarr and Radarr, and with `-SubtitleLanguage pb` it also
+gets a language profile, that profile as the default for series and movies,
+automatic subtitle synchronisation, and subtitle upgrades.
 
-- a language profile, then assigned in bulk to the existing library — making it
-  the default only affects items added afterwards
-- **automatic subtitle synchronisation**, which times the subtitle to the actual
-  file
-- upgrade previously downloaded subtitles
-- at least one provider account
+The profile is not a nicety. **Bazarr silently ignores any item that has no
+language profile**, so before this existed the integration fetched nothing while
+appearing to be configured.
+
+Two things are still yours:
+
+- **a provider account.** Nothing can be downloaded without one.
+- **assigning the profile in bulk to what is already in the library.** A default
+  applies to items added after it is set, not retrospectively.
+
+Three traps in that endpoint are worth knowing before editing this, all found by
+running it rather than reading about it:
+
+- booleans must be lower case; `True` is refused with 406 **and the whole form is
+  discarded with it**, which is how this wiring managed to do nothing at all for
+  a long time while reporting success
+- a `204` proves only that the request was accepted — field names without the
+  `settings-` prefix are accepted too, write the wrong type into the config, and
+  kill Bazarr on its next read
+- changing `use_sonarr` restarts Bazarr, so the connection drops before the reply
+  arrives even though the write landed
 
 ---
 

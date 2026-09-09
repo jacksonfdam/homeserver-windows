@@ -109,9 +109,16 @@ re-verify rather than guessing:
 
 - **Jellyseerr wiring is manual.** It needs a Jellyfin/Plex login before it will
   accept Sonarr/Radarr settings, so the wizard cannot be skipped.
-- **Bazarr wiring is best effort.** Its settings endpoint takes form data, and the
-  API key lives in `config.yaml` at a path that has moved between versions.
-  Failures are warned and skipped, never fatal.
+- **Bazarr's settings endpoint has three traps**, all established against a live
+  instance. Booleans must be lower case: `'True'` is rejected with 406 and the
+  whole form is discarded with it, which is why this wiring silently did nothing
+  for a long time. A 204 is not proof of anything - field names missing the
+  `settings-` prefix are also accepted, write the wrong type into config, and
+  take Bazarr down on its next read, so values are read back rather than
+  trusted. And changing `use_sonarr` restarts Bazarr, so the connection drops
+  before the response arrives even though the write applied - which is why the
+  connection settings are sent last. Confusingly, the profile JSON wants the
+  string `'False'` where the form wants `false`.
 - **First-run wizards** for Jellyfin, Komga and Kavita are interactive by design.
   Do not try to automate account creation.
 - **Radarr has no release-profile endpoint**, so the executable filter exists only

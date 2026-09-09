@@ -13,7 +13,9 @@
       3. creates the root folders inside /data/media
       4. registers Sonarr / Radarr / Lidarr as applications in Prowlarr, plus
          qBittorrent, so Prowlarr is the single place that manages indexers
-      5. points Bazarr at Sonarr and Radarr (best effort - see README)
+      5. points Bazarr at Sonarr and Radarr, turns on automatic subtitle sync
+         and upgrades, and with -SubtitleLanguage creates the language profile
+         Bazarr needs before it will fetch anything at all
       6. optionally applies minimum file sizes per quality, plus custom formats
          scored into the floor for release shapes never worth downloading:
          executable payloads, whole-disc rips and stereoscopic 3D. Sonarr gets
@@ -31,13 +33,23 @@
     renaming on import: on a fresh install that is what you want, on an existing
     library it renames everything on the next refresh.
 
+.PARAMETER SubtitleLanguage
+    Bazarr language code for the subtitle profile - 'pb' for Portuguese
+    (Brazil), 'en' for English. Bazarr ignores every item that has no profile,
+    so without this it downloads no subtitles at all.
+
 .EXAMPLE
-    .\Wire-Services.ps1 -ApplyQualityFloors -ApplyNaming
+    .\Wire-Services.ps1 -ApplyQualityFloors -ApplyNaming -SubtitleLanguage pb
 #>
 [CmdletBinding()]
 param(
     [switch]$ApplyQualityFloors,
-    [switch]$ApplyNaming
+    [switch]$ApplyNaming,
+
+    # Bazarr language code for the subtitle profile, e.g. 'pb' for Portuguese
+    # (Brazil), 'en' for English. Without it no profile is created, and Bazarr
+    # ignores every item that has none.
+    [string]$SubtitleLanguage
 )
 
 $ErrorActionPreference = 'Stop'
@@ -185,8 +197,20 @@ catch {
 Write-Step "Bazarr integration"
 
 # Bazarr keeps its API key in config.yaml and its settings endpoint takes form
-# data rather than JSON. This is the flakiest part of the wiring, so failures
-# here are reported and skipped instead of aborting the run.
+# data rather than JSON. Three things about that endpoint were established
+# against a live Bazarr, because getting any of them wrong fails quietly:
+#
+#   * Booleans must be lower case. 'True' is rejected with 406 and the message
+#     "must is_type_of <class 'bool'> but it is True" - and because the endpoint
+#     rejects the whole form, one capital letter discards every other field in
+#     the request. This is why this block never actually did anything.
+#   * A 204 is not proof. Field names without the 'settings-' prefix are also
+#     accepted with 204, write the wrong type into config, and take Bazarr down
+#     on its next read. Values are read back below rather than trusted.
+#   * Changing use_sonarr restarts Bazarr, so the connection drops before the
+#     response arrives. The write has already applied at that point, which is
+#     why the connection settings go last and a dropped connection there is not
+#     treated as a failure.
 try {
     $yaml = & docker exec bazarr sh -c "cat /config/config/config.yaml 2>/dev/null || cat /config/config.yaml 2>/dev/null"
     $bazarrKey = $null
@@ -196,26 +220,104 @@ try {
     }
     if (-not $bazarrKey) { throw "could not read Bazarr's API key from config.yaml" }
 
-    $form = @{
-        'settings-general-use_sonarr'  = 'True'
-        'settings-sonarr-ip'           = 'sonarr'
-        'settings-sonarr-port'         = '8989'
-        'settings-sonarr-base_url'     = '/'
-        'settings-sonarr-ssl'          = 'False'
-        'settings-sonarr-apikey'       = $apiKey.sonarr
-        'settings-general-use_radarr'  = 'True'
-        'settings-radarr-ip'           = 'radarr'
-        'settings-radarr-port'         = '7878'
-        'settings-radarr-base_url'     = '/'
-        'settings-radarr-ssl'          = 'False'
-        'settings-radarr-apikey'       = $apiKey.radarr
-        'settings-general-serie_default_enabled'  = 'True'
-        'settings-general-movie_default_enabled'  = 'True'
+    $bazarrHeaders = @{ 'X-API-KEY' = $bazarrKey }
+    $bazarrSettings = "$($hostUrl.bazarr)/api/system/settings"
+
+    # ---- 1. language profile, if one was asked for -----------------------
+    # Bazarr ignores any item without a language profile, so without this the
+    # rest of the integration downloads nothing. Profiles are not creatable
+    # through /api/system/languages/profiles - that returns 405 - they are
+    # written as a JSON blob on the settings form.
+    if ($SubtitleLanguage) {
+        $profile = @(
+            @{
+                profileId      = 1
+                name           = "auto: $SubtitleLanguage"
+                # Capitalised on purpose, and not a contradiction of the note
+                # above: Bazarr wants lower-case booleans on the settings form
+                # but the string 'False' inside the profile JSON. Verified both
+                # ways against a live instance.
+                items          = @(@{ id = 1; language = $SubtitleLanguage; audio_exclude = 'False'; hi = 'False'; forced = 'False' })
+                cutoff         = $null
+                mustContain    = @()
+                mustNotContain = @()
+                originalFormat = $false
+                tag            = $null
+            }
+        )
+        $null = Invoke-RestMethod -Uri $bazarrSettings -Method POST -Headers $bazarrHeaders -TimeoutSec 60 -Body @{
+            'languages-enabled'  = $SubtitleLanguage
+            'languages-profiles' = ($profile | ConvertTo-Json -Depth 10 -Compress)
+        }
+
+        $profiles = Invoke-RestMethod -Uri "$($hostUrl.bazarr)/api/system/languages/profiles" -Headers $bazarrHeaders -TimeoutSec 30
+        $created = $null
+        foreach ($p in @($profiles)) { if ($p -and $p.name -eq "auto: $SubtitleLanguage") { $created = $p } }
+        if (-not $created) { throw "the '$SubtitleLanguage' profile was accepted but is not there" }
+        Write-Ok "language profile for '$SubtitleLanguage' (id $($created.profileId))"
+
+        # A profile only takes effect once it is the default, and the default
+        # only applies to items added afterwards - see the note below.
+        $null = Invoke-RestMethod -Uri $bazarrSettings -Method POST -Headers $bazarrHeaders -TimeoutSec 60 -Body @{
+            'settings-general-serie_default_enabled' = 'true'
+            'settings-general-serie_default_profile' = $created.profileId
+            'settings-general-movie_default_enabled' = 'true'
+            'settings-general-movie_default_profile' = $created.profileId
+        }
+        Write-Ok "set as the default for series and movies"
     }
-    $null = Invoke-RestMethod -Uri "$($hostUrl.bazarr)/api/system/settings" -Method POST `
-        -Headers @{ 'X-API-KEY' = $bazarrKey } -Body $form -TimeoutSec 60
-    Write-Ok "Bazarr now talks to Sonarr and Radarr"
-    Write-Info "still manual: subtitle providers and a language profile (Bazarr ignores items without one)"
+    else {
+        Write-Info "no -SubtitleLanguage given, so no language profile was created"
+        Write-Info "Bazarr ignores items without one, so it will download nothing until you make it"
+    }
+
+    # ---- 2. subtitle handling -------------------------------------------
+    $null = Invoke-RestMethod -Uri $bazarrSettings -Method POST -Headers $bazarrHeaders -TimeoutSec 60 -Body @{
+        # Times the subtitle to the actual file rather than trusting the release.
+        'settings-subsync-use_subsync' = 'true'
+        # Replaces a subtitle later if a better one turns up.
+        'settings-general-upgrade_subs' = 'true'
+    }
+    Write-Ok "automatic subtitle sync and upgrades on"
+
+    # ---- 3. Sonarr and Radarr, last, because this restarts Bazarr -------
+    $connections = @{
+        'settings-general-use_sonarr' = 'true'
+        'settings-sonarr-ip'          = 'sonarr'
+        'settings-sonarr-port'        = '8989'
+        'settings-sonarr-base_url'    = '/'
+        'settings-sonarr-ssl'         = 'false'
+        'settings-sonarr-apikey'      = $apiKey.sonarr
+        'settings-general-use_radarr' = 'true'
+        'settings-radarr-ip'          = 'radarr'
+        'settings-radarr-port'        = '7878'
+        'settings-radarr-base_url'    = '/'
+        'settings-radarr-ssl'         = 'false'
+        'settings-radarr-apikey'      = $apiKey.radarr
+    }
+    try {
+        $null = Invoke-RestMethod -Uri $bazarrSettings -Method POST -Headers $bazarrHeaders -Body $connections -TimeoutSec 60
+    }
+    catch {
+        # Expected: Bazarr applies the change and then restarts, so the response
+        # never arrives. Verified below instead of guessed at.
+        Write-Info "Bazarr restarted while applying the connection settings, which it does"
+    }
+
+    $confirmed = $false
+    for ($i = 0; $i -lt 20; $i++) {
+        Start-Sleep -Seconds 3
+        try {
+            $live = Invoke-RestMethod -Uri $bazarrSettings -Headers $bazarrHeaders -TimeoutSec 10
+            if ($live.general.use_sonarr -and $live.general.use_radarr) { $confirmed = $true; break }
+        }
+        catch { }
+    }
+    if ($confirmed) { Write-Ok "Bazarr talks to Sonarr and Radarr" }
+    else { Write-Warn "could not confirm the Sonarr/Radarr settings after the restart - check Bazarr > Settings" }
+
+    Write-Info "still manual: a subtitle provider account, and assigning the profile in bulk to"
+    Write-Host "           anything already in the library - a default only applies to items added after it" -ForegroundColor Gray
 }
 catch {
     Write-Warn "Bazarr wiring skipped: $($_.Exception.Message)"
