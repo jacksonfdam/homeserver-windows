@@ -60,11 +60,14 @@ function Set-DotEnvValue {
     Set-Content -LiteralPath $Path -Value $lines -Encoding ASCII
 }
 
+# AllowEmptyString is load-bearing: a mandatory [string] parameter rejects '' at
+# bind time, and '' is a legitimate default here - it is how a caller says "no
+# value, and I will decide what to do about that". Four call sites pass it.
 function Get-EnvOrDefault {
     param(
         [Parameter(Mandatory = $true)][hashtable]$Conf,
         [Parameter(Mandatory = $true)][string]$Key,
-        [Parameter(Mandatory = $true)][string]$Default
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Default
     )
     if ($Conf.ContainsKey($Key) -and $Conf[$Key] -ne '') { return $Conf[$Key] }
     return $Default
