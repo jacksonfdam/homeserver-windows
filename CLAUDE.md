@@ -134,9 +134,22 @@ python3 -c "import yaml; yaml.safe_load(open('docker-compose.yml'))"   # compose
 docker compose config                                                  # interpolation resolves
 ```
 
-For PowerShell, `Invoke-ScriptAnalyzer` on the Windows box, or at minimum check
-brace/paren balance. The scripts have no tests; they are verified by running them
-against a live stack.
+For PowerShell, `Invoke-ScriptAnalyzer` on the Windows box. The scripts have no
+tests; they are verified by running them against a live stack.
+
+From a machine with no PowerShell, brace and paren balance is the floor, plus one
+check worth running every time because it is a parse error rather than a runtime
+one:
+
+```bash
+grep -nE '"[^"]*\$[A-Za-z_][A-Za-z0-9_]*:' scripts/*.ps1
+```
+
+`"$Name:"` inside a double-quoted string is read as a drive-qualified variable,
+the way `$env:PATH` is, and fails to parse. Write `"${Name}:"` or escape the
+colon with a backtick. This is not theoretical: it shipped once, in
+`_Common.ps1`, and because every script dot-sources that file it broke all of
+them at once.
 
 Style: comments explain why, not what. The scripts are meant to be read as much
 as run — this started as a portfolio lab, and the Windows-specific gotchas are the
