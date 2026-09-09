@@ -191,7 +191,13 @@ function New-ProviderFromSchema {
     }
     if ($schema -eq $null) { throw "No schema with implementation '$Implementation' at $SchemaPath" }
 
-    $schema.name = $Name
+    # Add-Member rather than $schema.name = $Name, which throws "the property
+    # 'name' cannot be found on this object". Whether a schema carries a name
+    # varies by provider type within one API version: Prowlarr's
+    # downloadclient/schema has it, applications/schema does not. Direct
+    # assignment worked for download clients and failed for every application,
+    # so Prowlarr never got Sonarr, Radarr or Lidarr registered.
+    $schema | Add-Member -NotePropertyName 'name' -NotePropertyValue $Name -Force
     foreach ($key in $TopLevel.Keys) {
         $schema | Add-Member -NotePropertyName $key -NotePropertyValue $TopLevel[$key] -Force
     }
