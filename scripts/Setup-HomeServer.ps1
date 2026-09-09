@@ -143,6 +143,10 @@ Write-Step "Folder layout"
 $dataDirs = @(
     'torrents', 'torrents/incomplete', 'torrents/movies', 'torrents/tv', 'torrents/music', 'torrents/manga',
     'usenet', 'usenet/incomplete',
+    # Sonarr and Radarr refuse the recycle bin setting unless the folder already
+    # exists and is writable inside the container, so it is created here. A
+    # sibling of media/ and torrents/, so deleting into it is a move, not a copy.
+    'recycle',
     'media', 'media/movies', 'media/tv', 'media/anime', 'media/music', 'media/manga', 'media/comics', 'media/books'
 )
 foreach ($d in $dataDirs) {

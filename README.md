@@ -174,6 +174,14 @@ built-in progress sync.
    such endpoint, so all three become custom formats scored at -10000, far under
    the default minimum of 0, which refuses the release just the same.
 
+7. With `-ApplyNaming`: sets file and folder naming in Sonarr and Radarr, stops
+   PROPER releases from jumping ahead of your scoring, and points both at a
+   recycle bin under `/data/recycle`. Folders carry the IMDb id so the player
+   matches on the id rather than the title, and the anime format carries
+   absolute episode numbering — without which an anime library does not sort
+   correctly. Off by default because it enables renaming on import, which on an
+   existing library means a bulk rename on the next refresh.
+
 Instead of hardcoding provider field lists, it fetches each app's
 `/schema` endpoint and overrides only the fields it cares about. That is the
 difference between a script that works this month and one that works next year.
