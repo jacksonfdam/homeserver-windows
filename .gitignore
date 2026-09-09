@@ -25,3 +25,8 @@ desktop.ini
 # while something still has it open. This repo is normally worked on over such
 # a share, so they turn up often enough to be worth ignoring.
 .smbdelete*
+
+# Scratch pad for pasting terminal output off the Windows box. Deliberately not
+# tracked: it exists to move an error message from there to here, and it has
+# already been swept up once by a careless `git add -A`.
+temp.txt
