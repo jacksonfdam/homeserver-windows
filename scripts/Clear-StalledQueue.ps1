@@ -17,7 +17,7 @@
     .\Clear-StalledQueue.ps1 -Apply -MinAgeHours 48
 
 .EXAMPLE
-    # run every day at 05:00
+    # Setup-HomeServer.ps1 -RegisterTasks does this for you. By hand:
     $action  = New-ScheduledTaskAction -Execute 'powershell.exe' `
         -Argument '-NoProfile -ExecutionPolicy Bypass -File "C:\path\to\scripts\Clear-StalledQueue.ps1" -Apply'
     $trigger = New-ScheduledTaskTrigger -Daily -At 5am

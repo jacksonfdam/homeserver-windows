@@ -31,7 +31,11 @@ param(
     [string[]]$Profiles = @(),
 
     [switch]$SkipPull,
-    [switch]$SkipWiring
+    [switch]$SkipWiring,
+
+    # Registers the two daily maintenance tasks. Off by default: scheduling work
+    # on someone's machine unasked is intrusive.
+    [switch]$RegisterTasks
 )
 
 $ErrorActionPreference = 'Stop'
@@ -276,6 +280,22 @@ if (-not $SkipWiring) {
 }
 else {
     Write-Warn "-SkipWiring set: services are running but not connected to each other"
+}
+
+# -------------------------------------------------- 8b. scheduled maintenance
+if ($RegisterTasks) {
+    Write-Step "Scheduled tasks"
+
+    $null = Register-HomeServerTask -Name 'homeserver-clear-stalled' `
+        -ScriptPath (Join-Path $PSScriptRoot 'Clear-StalledQueue.ps1') `
+        -ScriptArguments '-Apply' -At '05:00'
+
+    # 03:00 local, comfortably after the 00:00 UTC dump has been published.
+    $null = Register-HomeServerTask -Name 'homeserver-update-mangabaka' `
+        -ScriptPath (Join-Path $PSScriptRoot 'Update-MangaBaka.ps1') -At '03:00'
+
+    Write-Info "both run as you, and only while you are logged on - Task Scheduler"
+    Write-Host "           can change that, but it needs a stored password to do it." -ForegroundColor Gray
 }
 
 # ------------------------------------------------------------------- 9. summary

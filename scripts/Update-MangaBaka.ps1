@@ -29,7 +29,8 @@
     .\Update-MangaBaka.ps1
 
 .EXAMPLE
-    # refresh every morning, after the 00:00 UTC dump has been published
+    # Setup-HomeServer.ps1 -RegisterTasks does this for you. By hand, after the
+    # 00:00 UTC dump has been published:
     $action  = New-ScheduledTaskAction -Execute 'powershell.exe' `
         -Argument '-NoProfile -ExecutionPolicy Bypass -File "C:\path\to\scripts\Update-MangaBaka.ps1"'
     $trigger = New-ScheduledTaskTrigger -Daily -At 3am
