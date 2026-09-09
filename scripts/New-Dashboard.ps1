@@ -130,23 +130,48 @@ $jellyfinWidget = Get-WidgetOrNothing -For 'Jellyfin' -RequiredKeys @('HOMEPAGE_
           enableNowPlaying: true
 "@
 
-$komgaWidget = Get-WidgetOrNothing -For 'Komga' -RequiredKeys @('HOMEPAGE_VAR_KOMGA_USER', 'HOMEPAGE_VAR_KOMGA_PASSWORD') -Block @"
+# Komga and Kavita each accept either an API key or a username and password, and
+# what their UIs actually hand you is a key - Kavita shows it inside the OPDS
+# URL, Komga under Account settings. Generating only the username form asked for
+# the credential you are least likely to have, so the key comes first here and
+# the login pair is the fallback.
+function Get-ReaderWidget {
+    param(
+        [Parameter(Mandatory = $true)][string]$For,
+        [Parameter(Mandatory = $true)][string]$Type,
+        [Parameter(Mandatory = $true)][string]$Url,
+        # The name to look up in .env, and the name to write into the YAML. They
+        # differ on purpose: the key already lives in .env as KOMGA_API_KEY for
+        # Import-MangaLists.ps1, while Homepage only substitutes variables
+        # carrying its own HOMEPAGE_VAR_ prefix, which docker-compose.yml maps
+        # it to. Checking the placeholder name here would always come back empty.
+        [Parameter(Mandatory = $true)][string]$KeyEnvVar,
+        [Parameter(Mandatory = $true)][string]$KeyPlaceholder,
+        [Parameter(Mandatory = $true)][string]$UserVar,
+        [Parameter(Mandatory = $true)][string]$PassVar
+    )
+    $head = "`n`n        widget:`n          type: $Type`n          url: $Url"
 
-        widget:
-          type: komga
-          url: http://komga:25600
-          username: {{HOMEPAGE_VAR_KOMGA_USER}}
-          password: {{HOMEPAGE_VAR_KOMGA_PASSWORD}}
-"@
+    if (Get-EnvOrDefault -Conf $conf -Key $KeyEnvVar -Default '') {
+        Write-Info "$For widget will use $KeyEnvVar"
+        return "$head`n          key: {{$KeyPlaceholder}}"
+    }
+    if ((Get-EnvOrDefault -Conf $conf -Key $UserVar -Default '') -and
+        (Get-EnvOrDefault -Conf $conf -Key $PassVar -Default '')) {
+        return "$head`n          username: {{$UserVar}}`n          password: {{$PassVar}}"
+    }
 
-$kavitaWidget = Get-WidgetOrNothing -For 'Kavita' -RequiredKeys @('HOMEPAGE_VAR_KAVITA_USER', 'HOMEPAGE_VAR_KAVITA_PASSWORD') -Block @"
+    Write-Warn "$For widget skipped: set $KeyEnvVar, or both $UserVar and $PassVar"
+    return ''
+}
 
-        widget:
-          type: kavita
-          url: http://kavita:5000
-          username: {{HOMEPAGE_VAR_KAVITA_USER}}
-          password: {{HOMEPAGE_VAR_KAVITA_PASSWORD}}
-"@
+$komgaWidget = Get-ReaderWidget -For 'Komga' -Type 'komga' -Url 'http://komga:25600' `
+    -KeyEnvVar 'KOMGA_API_KEY' -KeyPlaceholder 'HOMEPAGE_VAR_KOMGA_KEY' `
+    -UserVar 'HOMEPAGE_VAR_KOMGA_USER' -PassVar 'HOMEPAGE_VAR_KOMGA_PASSWORD'
+
+$kavitaWidget = Get-ReaderWidget -For 'Kavita' -Type 'kavita' -Url 'http://kavita:5000' `
+    -KeyEnvVar 'KAVITA_API_KEY' -KeyPlaceholder 'HOMEPAGE_VAR_KAVITA_KEY' `
+    -UserVar 'HOMEPAGE_VAR_KAVITA_USER' -PassVar 'HOMEPAGE_VAR_KAVITA_PASSWORD'
 
 $qbtWidget = Get-WidgetOrNothing -For 'qBittorrent' -RequiredKeys @('HOMEPAGE_VAR_QBT_USER', 'HOMEPAGE_VAR_QBT_PASSWORD') -Block @"
 
@@ -351,8 +376,10 @@ if (-not (Test-Path -LiteralPath $dockerYaml)) { Set-Content -LiteralPath $docke
 Write-Step "Next"
 Write-Host "    1. Fill these in .env if you want the live widgets:"
 Write-Host "       HOMEPAGE_VAR_JELLYFIN_KEY   (Jellyfin > Dashboard > Advanced > API Keys)"
-Write-Host "       HOMEPAGE_VAR_KOMGA_USER / _PASSWORD"
-Write-Host "       HOMEPAGE_VAR_KAVITA_USER / _PASSWORD   (needs the Admin role)"
+Write-Host "       KOMGA_API_KEY             (Komga > Account settings > API keys)"
+Write-Host "         or HOMEPAGE_VAR_KOMGA_USER / _PASSWORD"
+Write-Host "       KAVITA_API_KEY            (Kavita > Settings > Account > API Key)"
+Write-Host "         or HOMEPAGE_VAR_KAVITA_USER / _PASSWORD   (needs the Admin role)"
 Write-Host "       HOMEPAGE_VAR_QBT_USER / _PASSWORD"
 Write-Host "    2. docker compose up -d homepage"
 Write-Host "    3. http://${hostIp}:$hpPort"

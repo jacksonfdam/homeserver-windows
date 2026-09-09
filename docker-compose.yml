@@ -241,6 +241,12 @@ services:
       # Referenced as {{HOMEPAGE_VAR_*}} inside services.yaml so credentials
       # stay in .env instead of the config files.
       HOMEPAGE_VAR_JELLYFIN_KEY: ${HOMEPAGE_VAR_JELLYFIN_KEY:-}
+      # Komga and Kavita each accept an API key instead of a login, and those
+      # keys already exist in .env for Import-MangaLists.ps1 - so they are
+      # forwarded under the HOMEPAGE_VAR_ prefix Homepage requires rather than
+      # asking you to paste the same secret into a second variable.
+      HOMEPAGE_VAR_KOMGA_KEY: ${KOMGA_API_KEY:-}
+      HOMEPAGE_VAR_KAVITA_KEY: ${KAVITA_API_KEY:-}
       HOMEPAGE_VAR_KOMGA_USER: ${HOMEPAGE_VAR_KOMGA_USER:-}
       HOMEPAGE_VAR_KOMGA_PASSWORD: ${HOMEPAGE_VAR_KOMGA_PASSWORD:-}
       HOMEPAGE_VAR_KAVITA_USER: ${HOMEPAGE_VAR_KAVITA_USER:-}
