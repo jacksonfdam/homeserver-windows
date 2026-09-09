@@ -187,7 +187,11 @@ built-in progress sync.
    single place indexers are managed — the article is emphatic about this, and it
    is right: indexers added by hand inside Sonarr/Radarr are where the bad
    releases came from.
-5. Points Bazarr at Sonarr and Radarr.
+5. Points Bazarr at Sonarr and Radarr, turns on automatic subtitle
+   synchronisation and subtitle upgrades, and with `-SubtitleLanguage pb` creates
+   the language profile and makes it the default. That profile is not optional:
+   Bazarr silently ignores every item that has none, so without it the
+   integration downloads nothing.
 6. With `-ApplyQualityFloors`: sets a minimum size per quality definition (they
    all ship at zero, which lets a 600 MB file pass as 2160p) and rejects three
    kinds of release that are never worth the bandwidth — an executable payload
