@@ -446,7 +446,7 @@ function Register-HomeServerTask {
         return $false
     }
     if (-not (Test-Path -LiteralPath $ScriptPath)) {
-        Write-Fail "$Name: $ScriptPath does not exist"
+        Write-Fail "${Name}: $ScriptPath does not exist"
         return $false
     }
 
