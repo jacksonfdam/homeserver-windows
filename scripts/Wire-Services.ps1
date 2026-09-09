@@ -14,9 +14,10 @@
       4. registers Sonarr / Radarr / Lidarr as applications in Prowlarr, plus
          qBittorrent, so Prowlarr is the single place that manages indexers
       5. points Bazarr at Sonarr and Radarr (best effort - see README)
-      6. optionally applies minimum file sizes per quality, plus a filter that
-         rejects releases advertising an executable payload - a release profile
-         in Sonarr, a negatively scored custom format in Radarr
+      6. optionally applies minimum file sizes per quality, plus custom formats
+         scored into the floor for release shapes never worth downloading:
+         executable payloads, whole-disc rips and stereoscopic 3D. Sonarr gets
+         a release profile for the first, Radarr gets all three
          (-ApplyQualityFloors)
 
     It deliberately does NOT add indexers. Which indexers you use, and whether
@@ -274,61 +275,97 @@ if ($ApplyQualityFloors) {
         Write-Fail "sonarr release profile: $($_.Exception.Message)"
     }
 
-    # The Radarr half of the same protection. Radarr has no release profile, so
-    # the filter is a custom format scored far below the quality profile's
-    # minimum: any release whose title advertises an executable scores -10000,
-    # which is under the default minFormatScore of 0, so it is rejected.
+    # Radarr has no release profile endpoint, so anything to be rejected is a
+    # custom format scored far below the quality profile's minimum. The default
+    # minFormatScore is 0, so a release carrying any of these scores -10000 and
+    # is refused.
     #
-    # Specifications inside one custom format are ANDed, so a single
-    # ReleaseTitleSpecification with an alternation matches any of the
-    # extensions. The specification is taken from /customformat/schema for the
-    # same reason providers are: the field list is the app's to define, not ours.
+    # Specifications inside one custom format are ANDed, so each of these is a
+    # single ReleaseTitleSpecification with an alternation rather than several
+    # specifications. The specification comes from /customformat/schema for the
+    # same reason providers do: the field list is the app's to define, not ours.
+    #
+    # The idea of scoring unwanted release shapes into the floor comes from the
+    # TRaSH Guides; the patterns here are our own and were checked against a
+    # live Radarr, which compiles the regex when the format is created.
+    $radarrFormats = @(
+        @{
+            name     = 'block-executables'
+            specName = 'executable payload'
+            # A "complete" release whose payload is a renamed executable.
+            pattern  = '\.(exe|scr|bat|cmd|msi|lnk|vbs|pif)\b'
+        },
+        @{
+            name     = 'BR-DISK'
+            specName = 'full disc rip'
+            # Whole-disc rips. Enormous, and most players will not play them.
+            pattern  = '\b(br-?disks?|bd(25|50|66|100)|(complete|full)[ ._-]?bluray)\b'
+        },
+        @{
+            name     = '3D'
+            specName = 'stereoscopic'
+            # Side-by-side and over-under, which look broken on a flat screen.
+            pattern  = '\b(3d|bluray3d|(half|full)[ ._-]?(ou|sbs)|sbs)\b'
+        }
+    )
+    $rejectScore = -10000
+
     try {
-        $cfName = 'block-executables'
-        $cfPattern = '\.(exe|scr|bat|cmd|msi|lnk|vbs|pif)\b'
-
         $existingFormats = Invoke-ArrApi -BaseUrl $hostUrl.radarr -ApiKey $apiKey.radarr -Path '/api/v3/customformat'
-        $cf = $null
-        foreach ($f in @($existingFormats)) { if ($f -and $f.name -eq $cfName) { $cf = $f } }
+        $schemas = Invoke-ArrApi -BaseUrl $hostUrl.radarr -ApiKey $apiKey.radarr -Path '/api/v3/customformat/schema'
+        $schemaTemplate = $null
+        foreach ($s in @($schemas)) {
+            if ($s.implementation -eq 'ReleaseTitleSpecification') { $schemaTemplate = $s; break }
+        }
+        if ($schemaTemplate -eq $null) { throw "no ReleaseTitleSpecification in /api/v3/customformat/schema" }
 
-        if ($cf -eq $null) {
-            $schemas = Invoke-ArrApi -BaseUrl $hostUrl.radarr -ApiKey $apiKey.radarr -Path '/api/v3/customformat/schema'
-            $spec = $null
-            foreach ($s in @($schemas)) {
-                if ($s.implementation -eq 'ReleaseTitleSpecification') { $spec = $s; break }
-            }
-            if ($spec -eq $null) { throw "no ReleaseTitleSpecification in /api/v3/customformat/schema" }
+        # Format id -> score. Collected first so the quality profiles are read
+        # and written once rather than once per format.
+        $wantedScores = @{}
 
-            $spec.name = 'executable payload'
-            $spec | Add-Member -NotePropertyName 'negate' -NotePropertyValue $false -Force
-            $spec | Add-Member -NotePropertyName 'required' -NotePropertyValue $true -Force
-            foreach ($field in @($spec.fields)) {
-                if ($field.name -eq 'value') {
-                    $field | Add-Member -NotePropertyName 'value' -NotePropertyValue $cfPattern -Force
+        foreach ($fmt in $radarrFormats) {
+            $cf = $null
+            foreach ($f in @($existingFormats)) { if ($f -and $f.name -eq $fmt.name) { $cf = $f } }
+
+            if ($cf -eq $null) {
+                # Round-trip through JSON to get a deep copy: the schema object
+                # is shared, and editing it in place would leak each pattern
+                # into the next format built from it.
+                $spec = $schemaTemplate | ConvertTo-Json -Depth 20 | ConvertFrom-Json
+                $spec.name = $fmt.specName
+                $spec | Add-Member -NotePropertyName 'negate' -NotePropertyValue $false -Force
+                $spec | Add-Member -NotePropertyName 'required' -NotePropertyValue $true -Force
+                foreach ($field in @($spec.fields)) {
+                    if ($field.name -eq 'value') {
+                        $field | Add-Member -NotePropertyName 'value' -NotePropertyValue $fmt.pattern -Force
+                    }
                 }
+
+                $cfBody = @{
+                    name                            = $fmt.name
+                    includeCustomFormatWhenRenaming = $false
+                    specifications                  = @($spec)
+                }
+                $cf = Invoke-ArrApi -BaseUrl $hostUrl.radarr -ApiKey $apiKey.radarr -Path '/api/v3/customformat' -Method POST -Body $cfBody
+                Write-Ok "radarr: custom format '$($fmt.name)' created"
+            }
+            else {
+                Write-Info "radarr: custom format '$($fmt.name)' already present"
             }
 
-            $cfBody = @{
-                name                           = $cfName
-                includeCustomFormatWhenRenaming = $false
-                specifications                 = @($spec)
-            }
-            $cf = Invoke-ArrApi -BaseUrl $hostUrl.radarr -ApiKey $apiKey.radarr -Path '/api/v3/customformat' -Method POST -Body $cfBody
-            Write-Ok "radarr: custom format '$cfName' created"
-        }
-        else {
-            Write-Info "radarr: custom format '$cfName' already present"
+            if ($cf -and $cf.id) { $wantedScores[[int]$cf.id] = $rejectScore }
         }
 
-        # Creating the format changes nothing on its own - it only rejects once
-        # it carries a negative score inside each quality profile.
+        # Creating a format changes nothing on its own - it only rejects once it
+        # carries a negative score inside each quality profile. A profile read
+        # after the formats exist already lists them, at score 0.
         $profiles = Invoke-ArrApi -BaseUrl $hostUrl.radarr -ApiKey $apiKey.radarr -Path '/api/v3/qualityprofile'
         $scored = 0
         foreach ($qualityProfile in @($profiles)) {
             $needsSave = $false
             foreach ($item in @($qualityProfile.formatItems)) {
-                if ($item.format -eq $cf.id -and $item.score -ne -10000) {
-                    $item | Add-Member -NotePropertyName 'score' -NotePropertyValue -10000 -Force
+                if ($wantedScores.ContainsKey([int]$item.format) -and $item.score -ne $rejectScore) {
+                    $item | Add-Member -NotePropertyName 'score' -NotePropertyValue $rejectScore -Force
                     $needsSave = $true
                 }
             }
@@ -338,11 +375,11 @@ if ($ApplyQualityFloors) {
                 $scored++
             }
         }
-        if ($scored -gt 0) { Write-Ok "radarr: $cfName scored in $scored quality profile(s)" }
+        if ($scored -gt 0) { Write-Ok "radarr: $($radarrFormats.Count) formats scored in $scored quality profile(s)" }
         else { Write-Info "radarr: quality profiles already scored" }
     }
     catch {
-        Write-Fail "radarr custom format: $($_.Exception.Message)"
+        Write-Fail "radarr custom formats: $($_.Exception.Message)"
     }
 }
 
