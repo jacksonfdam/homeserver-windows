@@ -15,20 +15,20 @@ The original runs on Ubuntu on an Intel NUC with a Synology NAS mounted at
 Windows, and most of the work here is in the parts that differ.
 
 ```
-scripts/Setup-HomeServer.ps1    preflight -> folders -> .env -> compose up -> wiring
-scripts/Wire-Services.ps1       connects the services to each other via their APIs
-scripts/New-Dashboard.ps1       generates the Homepage dashboard config
-scripts/Import-MangaLists.ps1   MangaDex / MangaFire lists -> Komga or Kavita
-scripts/Update-MangaBaka.ps1    mirrors the MangaBaka series database (Scheduled Task)
-scripts/Get-HomeServerStatus.ps1  what is configured, what is not, what to run next
-scripts/Enter-HomeServer.ps1    interactive console: the same state, plus acting on it
-scripts/Clear-StalledQueue.ps1  daily cleanup of dead downloads (Scheduled Task)
-scripts/_Common.ps1             shared helpers
-docker-compose.yml              the stack
-.env.example                    paths, ports, timezone
-docs/services.md                every service: ports, access, integration
-docs/tuning.md                  what is configured for you, what is not, and why
-docs/manga-lists.md             importing reading lists
+scripts/Setup-HomeServer.ps1         preflight -> folders -> .env -> compose up -> wiring
+scripts/Wire-Services.ps1            connects the services to each other via their APIs
+scripts/New-Dashboard.ps1            generates the Homepage dashboard config
+scripts/Import-MangaLists.ps1        MangaDex / MangaFire lists -> Komga or Kavita
+scripts/Update-MangaBaka.ps1         mirrors the MangaBaka series database (Scheduled Task)
+scripts/Get-HomeServerStatus.ps1     what is configured, what is not, what to run next
+scripts/Start-HomeServerConsole.ps1  interactive console: the same state, plus acting on it
+scripts/Clear-StalledQueue.ps1       daily cleanup of dead downloads (Scheduled Task)
+scripts/_Common.ps1                  shared helpers
+docker-compose.yml                   the stack
+.env.example                         paths, ports, timezone
+docs/services.md                     every service: ports, access, integration
+docs/tuning.md                       what is configured for you, what is not, and why
+docs/manga-lists.md                  importing reading lists
 ```
 
 ## Prerequisites

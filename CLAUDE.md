@@ -19,20 +19,20 @@ it looks redundant from a Unix shell.
 ## Layout
 
 ```
-docker-compose.yml              the whole stack, one file, Compose profiles
-.env.example                    paths, ports, TZ, dashboard vars
-scripts/_Common.ps1             shared helpers, dot-sourced by everything else
-scripts/Setup-HomeServer.ps1    entry point: preflight -> folders -> .env -> up -> wiring
-scripts/Wire-Services.ps1       connects services to each other via REST APIs
-scripts/New-Dashboard.ps1       generates Homepage YAML config
-scripts/Import-MangaLists.ps1   MangaDex/MangaFire lists -> Komga/Kavita
-scripts/Update-MangaBaka.ps1    mirrors the MangaBaka SQLite dump locally
-scripts/Get-HomeServerStatus.ps1  read-only report of what is configured and running
-scripts/Enter-HomeServer.ps1    interactive console: same state, plus acting on it
-scripts/Clear-StalledQueue.ps1  removes dead downloads, meant as a Scheduled Task
-docs/services.md                per-service reference: ports, access, integration
-docs/tuning.md                  automated vs manual vs deliberately-not-done settings
-docs/manga-lists.md             the list import flow
+docker-compose.yml                   the whole stack, one file, Compose profiles
+.env.example                         paths, ports, TZ, dashboard vars
+scripts/_Common.ps1                  shared helpers, dot-sourced by everything else
+scripts/Setup-HomeServer.ps1         entry point: preflight -> folders -> .env -> up -> wiring
+scripts/Wire-Services.ps1            connects services to each other via REST APIs
+scripts/New-Dashboard.ps1            generates Homepage YAML config
+scripts/Import-MangaLists.ps1        MangaDex/MangaFire lists -> Komga/Kavita
+scripts/Update-MangaBaka.ps1         mirrors the MangaBaka SQLite dump locally
+scripts/Get-HomeServerStatus.ps1     read-only report of what is configured and running
+scripts/Start-HomeServerConsole.ps1  interactive console: same state, plus acting on it
+scripts/Clear-StalledQueue.ps1       removes dead downloads, meant as a Scheduled Task
+docs/services.md                     per-service reference: ports, access, integration
+docs/tuning.md                       automated vs manual vs deliberately-not-done settings
+docs/manga-lists.md                  the list import flow
 ```
 
 ## Decisions that must not be reverted casually

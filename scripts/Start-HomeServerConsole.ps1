@@ -27,13 +27,13 @@
     The argument for -Command, where one applies: restart, logs, open.
 
 .EXAMPLE
-    .\Enter-HomeServer.ps1
+    .\Start-HomeServerConsole.ps1
 
 .EXAMPLE
-    .\Enter-HomeServer.ps1 -Command status
+    .\Start-HomeServerConsole.ps1 -Command status
 
 .EXAMPLE
-    .\Enter-HomeServer.ps1 -Command logs -Argument sonarr
+    .\Start-HomeServerConsole.ps1 -Command logs -Argument sonarr
 #>
 [CmdletBinding()]
 param(
