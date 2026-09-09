@@ -168,6 +168,11 @@ else {
 
         $probed++
         $withFormats = ($svc.container -eq 'radarr')
+        # Only Sonarr and Radarr are given quality floors: the floor table is in
+        # MB per minute of video at 720p/1080p/2160p, which means nothing for
+        # music. Reporting Lidarr as unfloored sent you off to run
+        # -ApplyQualityFloors for something it will never set.
+        $expectsFloors = (@('sonarr', 'radarr') -contains $svc.container)
         $arr = Get-ArrState -Container $svc.container -BaseUrl "http://localhost:$($svc.port)" `
             -Api $svc.api -WithCustomFormats:$withFormats
 
@@ -186,10 +191,12 @@ else {
         if ($arr.rootFolders.Count -gt 0) { Write-Ok "  root folders: $($arr.rootFolders -join ', ')" }
         else { Write-Warn "  no root folders" }
 
-        if ($arr.qualityFloored) { Write-Ok "  quality floors applied" }
-        else {
-            Write-Warn "  quality definitions still ship a minimum size of zero"
-            $todo += ".\scripts\Wire-Services.ps1 -ApplyQualityFloors"
+        if ($expectsFloors) {
+            if ($arr.qualityFloored) { Write-Ok "  quality floors applied" }
+            else {
+                Write-Warn "  quality definitions still ship a minimum size of zero"
+                $todo += ".\scripts\Wire-Services.ps1 -ApplyQualityFloors"
+            }
         }
 
         if ($arr.renaming) { Write-Ok "  renaming on import is on" }
