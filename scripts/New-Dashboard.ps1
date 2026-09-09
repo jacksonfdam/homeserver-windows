@@ -130,12 +130,13 @@ $jellyfinWidget = Get-WidgetOrNothing -For 'Jellyfin' -RequiredKeys @('HOMEPAGE_
           enableNowPlaying: true
 "@
 
-# Komga and Kavita each accept either an API key or a username and password, and
-# what their UIs actually hand you is a key - Kavita shows it inside the OPDS
-# URL, Komga under Account settings. Generating only the username form asked for
-# the credential you are least likely to have, so the key comes first here and
-# the login pair is the fallback.
-function Get-ReaderWidget {
+# Komga, Kavita and qBittorrent all accept either an API key or a username and
+# password, and a key is what their UIs actually hand you: Kavita shows it inside
+# the OPDS URL, Komga under Account settings, qBittorrent under Options > WebUI >
+# Authentication from v5.2.0 on. Generating only the username form asked for the
+# credential you are least likely to have, so the key comes first here and the
+# login pair is the fallback.
+function Get-CredentialedWidget {
     param(
         [Parameter(Mandatory = $true)][string]$For,
         [Parameter(Mandatory = $true)][string]$Type,
@@ -165,22 +166,19 @@ function Get-ReaderWidget {
     return ''
 }
 
-$komgaWidget = Get-ReaderWidget -For 'Komga' -Type 'komga' -Url 'http://komga:25600' `
+$komgaWidget = Get-CredentialedWidget -For 'Komga' -Type 'komga' -Url 'http://komga:25600' `
     -KeyEnvVar 'KOMGA_API_KEY' -KeyPlaceholder 'HOMEPAGE_VAR_KOMGA_KEY' `
     -UserVar 'HOMEPAGE_VAR_KOMGA_USER' -PassVar 'HOMEPAGE_VAR_KOMGA_PASSWORD'
 
-$kavitaWidget = Get-ReaderWidget -For 'Kavita' -Type 'kavita' -Url 'http://kavita:5000' `
+$kavitaWidget = Get-CredentialedWidget -For 'Kavita' -Type 'kavita' -Url 'http://kavita:5000' `
     -KeyEnvVar 'KAVITA_API_KEY' -KeyPlaceholder 'HOMEPAGE_VAR_KAVITA_KEY' `
     -UserVar 'HOMEPAGE_VAR_KAVITA_USER' -PassVar 'HOMEPAGE_VAR_KAVITA_PASSWORD'
 
-$qbtWidget = Get-WidgetOrNothing -For 'qBittorrent' -RequiredKeys @('HOMEPAGE_VAR_QBT_USER', 'HOMEPAGE_VAR_QBT_PASSWORD') -Block @"
-
-        widget:
-          type: qbittorrent
-          url: http://qbittorrent:8080
-          username: {{HOMEPAGE_VAR_QBT_USER}}
-          password: {{HOMEPAGE_VAR_QBT_PASSWORD}}
-"@
+# The key path needs qBittorrent v5.2.0 or newer; older builds only know the
+# username and password, which is why both are still wired.
+$qbtWidget = Get-CredentialedWidget -For 'qBittorrent' -Type 'qbittorrent' -Url 'http://qbittorrent:8080' `
+    -KeyEnvVar 'HOMEPAGE_VAR_QBT_KEY' -KeyPlaceholder 'HOMEPAGE_VAR_QBT_KEY' `
+    -UserVar 'HOMEPAGE_VAR_QBT_USER' -PassVar 'HOMEPAGE_VAR_QBT_PASSWORD'
 
 $sonarrWidget = Get-KeyedWidget -For 'Sonarr' -Key $keys['sonarr'] -Block @"
 
@@ -380,7 +378,8 @@ Write-Host "       KOMGA_API_KEY             (Komga > Account settings > API key
 Write-Host "         or HOMEPAGE_VAR_KOMGA_USER / _PASSWORD"
 Write-Host "       KAVITA_API_KEY            (Kavita > Settings > Account > API Key)"
 Write-Host "         or HOMEPAGE_VAR_KAVITA_USER / _PASSWORD   (needs the Admin role)"
-Write-Host "       HOMEPAGE_VAR_QBT_USER / _PASSWORD"
+Write-Host "       HOMEPAGE_VAR_QBT_KEY      (qBittorrent 5.2+: Options > WebUI > Authentication)"
+Write-Host "         or HOMEPAGE_VAR_QBT_USER / _PASSWORD"
 Write-Host "    2. docker compose up -d homepage"
 Write-Host "    3. http://${hostIp}:$hpPort"
 Write-Host ""
