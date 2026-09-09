@@ -82,8 +82,8 @@ a queue — a change of purpose rather than a new subsystem.
   option that keeps everything that listens on a port a container on the
   `homeserver` network.
 - **Cloudflare bypass is internalised.** AIO uses Patchright and cloudscraper
-  directly. FlareSolverr is a deliberate omission in `CLAUDE.md`; this does not
-  avoid that decision so much as move it inside a dependency.
+  directly, rather than going through the FlareSolverr container the rest of the
+  stack now has. One more bypass path to keep working, not one shared one.
 - **`pywidevine` ships with it.** No part of this design uses that path.
 - **The sources are aggregator sites**, the same category as the downloader left
   out of the original stack. Chosen knowingly.

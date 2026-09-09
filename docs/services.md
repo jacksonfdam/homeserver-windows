@@ -39,6 +39,7 @@ managed**, and it pushes them into the other three.
 | 8080 | qBittorrent | web UI. Set a password before exposing it |
 | 6881 | qBittorrent | torrent traffic, TCP + UDP |
 | 9696 | Prowlarr | indexers. Add them here, then *Sync App Indexers* |
+| 8191 | FlareSolverr | `flaresolverr` profile. Solves Cloudflare challenges for indexers that need it |
 | 8085 | SABnzbd | `usenet` profile |
 | 9000 | Portainer | `utils` profile. Container UI |
 | — | Watchtower | `utils` profile. Pulls new images at 04:00 daily and restarts |
@@ -84,6 +85,14 @@ excluded-filename list before it ever starts, and automation reaches it without
 a password because `WebUI\AuthSubnetWhitelist` covers `172.16.0.0/12` — the
 Docker bridge range only.
 
+**FlareSolverr is opt-in and tag-driven.** Start it with the `flaresolverr`
+profile; the wiring script then registers it in Prowlarr as an indexer proxy and
+creates a `flaresolverr` tag. Prowlarr routes an indexer through the proxy only
+when the two share that tag, so nothing changes until you tag an indexer — which
+is the right default, because each proxied request launches a real browser and
+costs seconds and hundreds of MB. Tag only the indexers that actually fail
+without it.
+
 **SABnzbd** needs the same payload protection applied by hand: in `sabnzbd.ini`
 under `[misc]`, set `unwanted_extensions` to the same list and
 `action_on_unwanted_extensions = 2` so the whole download aborts.
@@ -109,6 +118,7 @@ under `[misc]`, set `unwanted_extensions` to the same list and
 | imports are slow, disk fills up | hardlinks unavailable on the NTFS mount, so imports copy ([windows.md](windows.md)) |
 | Sonarr/Radarr download nothing | no indexers in Prowlarr, or *Sync App Indexers* never run |
 | Bazarr finds no subtitles | no providers, or items have no language profile |
+| an indexer keeps failing a Cloudflare check | it needs the `flaresolverr` tag, and the profile has to be running |
 | playback stutters on good hardware | PGS subtitles being burned in; switch to an SRT track |
 | a service is unreachable after reboot | the data drive spun up after the containers started |
 | a container will not bind its port | not a conflict — a range Windows reserves ([windows.md](windows.md#reserved-port-ranges)) |

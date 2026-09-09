@@ -24,10 +24,11 @@ param(
     [string]$TimeZone,
     [string]$HostIp,
 
-    # plex   -> Plex Media Server (Jellyfin is always included)
-    # usenet -> SABnzbd
-    # utils  -> Portainer + Watchtower
-    [ValidateSet('plex', 'usenet', 'utils')]
+    # plex         -> Plex Media Server (Jellyfin is always included)
+    # usenet       -> SABnzbd
+    # utils        -> Portainer + Watchtower
+    # flaresolverr -> FlareSolverr, wired into Prowlarr as an indexer proxy
+    [ValidateSet('plex', 'usenet', 'utils', 'flaresolverr')]
     [string[]]$Profiles = @(),
 
     [switch]$SkipPull,

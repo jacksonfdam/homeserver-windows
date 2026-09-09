@@ -97,6 +97,10 @@ instead of hardcoding a field list that the next *arr release invalidates.
   registered with `fullSync`, so what you add there is pushed out. An indexer
   added inside an *arr app is not tracked, not removed when it dies, and is the
   usual source of bad releases. Which ones you enable is yours to decide.
+- **Which indexers go through FlareSolverr.** With the `flaresolverr` profile
+  running, the proxy and its tag are registered for you, but no indexer carries
+  the tag. Add it only where a search actually fails a Cloudflare check: a
+  proxied request launches a real browser.
 - **Series type Anime**, per series in Sonarr. It switches numbering from
   season/episode to absolute, which is how anime releases are named. There is no
   global setting.

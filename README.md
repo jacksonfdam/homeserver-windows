@@ -52,10 +52,11 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 ```
 
 Optional service groups are Compose profiles — Plex alongside Jellyfin, SABnzbd
-for Usenet, Portainer and Watchtower:
+for Usenet, FlareSolverr for indexers behind Cloudflare, Portainer and
+Watchtower:
 
 ```powershell
-.\scripts\Setup-HomeServer.ps1 -Profiles plex,usenet,utils
+.\scripts\Setup-HomeServer.ps1 -Profiles plex,usenet,flaresolverr,utils
 ```
 
 Re-running is safe. Every step checks before it writes, and the wiring script
