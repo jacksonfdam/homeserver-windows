@@ -71,7 +71,11 @@ assumed.
 providers are detected by name and skipped; the Komga collection merges rather
 than duplicating; config files are backed up before being rewritten.
 
-**No indexers are preconfigured in Prowlarr**, and none will be. Left out on
+**No indexers are preconfigured in Prowlarr**, and none will be. Shipping a
+Cardigann definition is a different thing and is allowed: `prowlarr/definitions/`
+holds third-party definitions Prowlarr's bundled catalogue does not carry, and
+Setup copies them into `Definitions/Custom/`. That puts an indexer in the *Add
+Indexer* list; adding and configuring it is still the user's move. Left out on
 purpose, not forgotten. Kaizoku (the manga downloader from the original repo) is
 out for the same reason — `missing.csv` from the list import is a backlog, not a
 download queue.

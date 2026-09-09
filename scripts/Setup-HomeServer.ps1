@@ -189,7 +189,44 @@ else {
     Write-Host "                  (c) move DATA_ROOT into the WSL2 filesystem (\\wsl`$\...) where hardlinks work."
 }
 
-# ------------------------------------------------- 5. seed qBittorrent settings
+# -------------------------------------- 5. custom Prowlarr indexer definitions
+Write-Step "Prowlarr custom definitions"
+
+# Prowlarr ships the whole Prowlarr/Indexers catalogue inside its image, so this
+# is only for definitions that are not in it. Definitions/Custom is where it
+# looks, and it caches them, so a change needs a restart to be picked up.
+#
+# A definition is not an indexer. This makes Torrentio available to add; adding
+# and configuring it stays manual, like every other indexer in this stack.
+$definitionsChanged = $false
+$defSource = Join-Path $root 'prowlarr\definitions'
+$defTarget = Join-Path $configRootWin 'prowlarr\Definitions\Custom'
+if (Test-Path -LiteralPath $defSource) {
+    if (-not (Test-Path -LiteralPath $defTarget)) { New-Item -ItemType Directory -Path $defTarget -Force | Out-Null }
+    $copied = 0
+    foreach ($def in @(Get-ChildItem -LiteralPath $defSource -Filter '*.yml' -File)) {
+        $dest = Join-Path $defTarget $def.Name
+        if (Test-Path -LiteralPath $dest) {
+            $same = (Get-FileHash -LiteralPath $def.FullName).Hash -eq (Get-FileHash -LiteralPath $dest).Hash
+            if ($same) {
+                Write-Info "$($def.Name) already current"
+                continue
+            }
+            # Someone may have edited the installed copy - the Torrentio options
+            # string in particular is meant to be tuned. Keep it before writing.
+            Copy-Item -LiteralPath $dest -Destination "$dest.bak" -Force
+            Write-Warn "$($def.Name) differed, previous version kept as $($def.Name).bak"
+        }
+        Copy-Item -LiteralPath $def.FullName -Destination $dest -Force
+        $copied++
+    }
+    if ($copied -gt 0) {
+        Write-Ok "$copied definition(s) installed in $defTarget"
+        $definitionsChanged = $true
+    }
+}
+
+# ------------------------------------------------- 6. seed qBittorrent settings
 Write-Step "qBittorrent seed configuration"
 
 $qbtConfDir = Join-Path $configRootWin 'qbittorrent\qBittorrent'
@@ -241,7 +278,7 @@ else {
     Write-Info "qBittorrent.conf already exists, not touching it"
 }
 
-# ------------------------------------------------------------------- 6. compose
+# ------------------------------------------------------------------- 7. compose
 Write-Step "Starting the stack"
 
 $activeProfiles = @($Profiles)
@@ -256,7 +293,15 @@ $code = Invoke-Compose -Profiles $activeProfiles -Arguments @('up', '-d', '--rem
 if ($code -ne 0) { throw "docker compose up failed with exit code $code" }
 Write-Ok "containers started"
 
-# --------------------------------------------------------------- 7. wait for UI
+# A container that was already running is not recreated by 'up -d', and Prowlarr
+# reads custom definitions once and caches them, so a definition written above
+# would not be seen until something restarted it.
+if ($definitionsChanged) {
+    $null = Invoke-Compose -Profiles $activeProfiles -Arguments @('restart', 'prowlarr')
+    Write-Ok "prowlarr restarted to pick up the custom definitions"
+}
+
+# --------------------------------------------------------------- 8. wait for UI
 Write-Step "Waiting for services"
 
 $endpoints = [ordered]@{
@@ -275,7 +320,7 @@ foreach ($name in $endpoints.Keys) {
     $null = Wait-HttpOk -Name $name -Url $endpoints[$name] -TimeoutSec 240
 }
 
-# -------------------------------------------------------------------- 8. wiring
+# -------------------------------------------------------------------- 9. wiring
 if (-not $SkipWiring) {
     & (Join-Path $PSScriptRoot 'Wire-Services.ps1')
 }
@@ -299,7 +344,7 @@ if ($RegisterTasks) {
     Write-Host "           can change that, but it needs a stored password to do it." -ForegroundColor Gray
 }
 
-# ------------------------------------------------------------------- 9. summary
+# ------------------------------------------------------------------ 10. summary
 Write-Step "Done"
 Write-Host ""
 Write-Host ("  {0,-14} {1}" -f 'SERVICE', 'URL') -ForegroundColor White

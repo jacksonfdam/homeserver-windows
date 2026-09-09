@@ -84,24 +84,32 @@ every 12 hours. Add it under Lists > Advanced Lists > Custom Lists, root folder
 
 ## Guide 2 — automatic Brazilian Portuguese dubbing
 
-Four pieces, and **piece 1 is an indexer** — the one thing this stack refuses to
-configure. Without it the other three have nothing to score, so the whole chain
-is manual or it is nothing.
+Four pieces. All four are available here now, but only the last three are
+applied for you — the first is an indexer, and adding indexers stays yours.
 
-**1. The Torrentio Cardigann definition — refused.** If you add it yourself, the
-path is neither of the two the guide gives:
+**1. The Torrentio Cardigann definition — shipped, not enabled.** The repository
+carries `prowlarr/definitions/torrentio.yml` and `Setup-HomeServer.ps1` installs
+it into `CONFIG_ROOT/prowlarr/Definitions/Custom/`, then restarts Prowlarr so it
+is picked up. That is neither of the two paths the guide gives, and the restart
+is `docker compose restart prowlarr`, not `systemctl`.
+
+Having the definition only puts *Torrentio* in the Add Indexer list. **You still
+add and configure it**, including the options string — the guide's Brazilian one
+is:
 
 ```
-${CONFIG_ROOT}/prowlarr/Definitions/Custom/torrentio.yml
+providers=comando,comoeubaixo,ondebaixa,bludv|sort=qualitysize
 ```
 
-Prowlarr sees that as `/config/Definitions/Custom/`. Restart with
-`docker compose restart prowlarr`, not `systemctl`. Two things the guide skips:
-the definition wants a **debrid provider API key**, which is a paid service, and
-its rate limit is why the file sets `requestDelay: 20`.
+The vendored file is a newer revision than the guide's: it already lists
+`comando` and `bludv` among its defaults, and its debrid provider defaults to
+`none` rather than requiring a paid Real-Debrid key. Whether Torrentio returns
+usable magnets with no debrid provider is the thing to check first if searches
+come back empty.
 
 **2–4. The three custom formats — by hand.** Ordinary custom formats that would
-automate cleanly, unautomated only because piece 1 is missing. Import them in
+automate cleanly, left manual because they are worth nothing until you have
+decided piece 1 is what you want. Import them in
 Settings > Custom Formats > **+** > Import, setting every language field to
 *Portuguese (Brazil)*:
 

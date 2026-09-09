@@ -119,9 +119,10 @@ instead of hardcoding a field list that the next *arr release invalidates.
 ## Not done
 
 - **Brazilian Portuguese dubbing.** Three of its four pieces are ordinary custom
-  formats that would automate cleanly. The fourth is an indexer, which this stack
-  does not configure, and without it the other three have nothing to score. The
-  manual recipe is in [guide-parity.md](guide-parity.md).
+  formats that would automate cleanly. The fourth is an indexer: the Torrentio
+  definition now ships in `prowlarr/definitions/` and Setup installs it, but
+  adding and configuring the indexer is still yours, and the other three score
+  nothing until you do. The recipe is in [guide-parity.md](guide-parity.md).
 - **Music playback.** Lidarr fills `/data/media/music` and nothing in the stack
   presents it. Jellyfin can serve the same path but is not configured to. The one
   content type where the pipeline stops.

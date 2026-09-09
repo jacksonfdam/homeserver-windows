@@ -93,6 +93,18 @@ is the right default, because each proxied request launches a real browser and
 costs seconds and hundreds of MB. Tag only the indexers that actually fail
 without it.
 
+**Prowlarr already ships the whole `Prowlarr/Indexers` catalogue** inside its
+image, so there is nothing to import for the 500+ definitions in it — they are
+in *Add Indexer* already, and they update with the image. `prowlarr/definitions/`
+in this repository is only for what is *not* in that catalogue; Setup copies it
+into `CONFIG_ROOT/prowlarr/Definitions/Custom/` and restarts Prowlarr, because
+definitions are cached at startup. An installed copy that differs is kept as
+`.bak` rather than overwritten silently — the Torrentio options string is meant
+to be edited.
+
+Shipping a definition is not the same as adding an indexer. Torrentio still has
+to be added and configured in Prowlarr like any other.
+
 **SABnzbd** needs the same payload protection applied by hand: in `sabnzbd.ini`
 under `[misc]`, set `unwanted_extensions` to the same list and
 `action_on_unwanted_extensions = 2` so the whole download aborts.

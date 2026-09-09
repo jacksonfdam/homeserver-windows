@@ -28,6 +28,7 @@ scripts/Test-Common.ps1              parse check + smoke test for the shared hel
 scripts/_Common.ps1                  shared helpers
 docker-compose.yml                   the stack
 .env.example                         paths, ports, timezone
+prowlarr/definitions/                custom Cardigann definitions, installed by Setup
 ```
 
 ## Prerequisites
