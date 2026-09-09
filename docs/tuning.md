@@ -130,15 +130,20 @@ episode numbering from season/episode to absolute. Anime releases are named with
 absolute numbering, so without this the matching fails. It is per-series and
 cannot be set once globally.
 
-### Disk pre-allocation — conflicts with what is shipped
+### Disk pre-allocation — on, in the seeded config
 
-The guide turns pre-allocation **on**, so a download cannot start and then run
-out of space unattended. The qBittorrent config seeded by `Setup-HomeServer.ps1`
-currently turns it **off**.
+Pre-allocation is on, so a download cannot start and then run out of space
+unattended. It costs a slower start and more SSD writes.
 
-The guide's argument is stronger here than in its original Linux setting:
+The argument is stronger here than in the guide's original Linux setting:
 hardlinks usually fail on an NTFS bind mount, so every import is a full copy and
-the peak space needed is roughly double. Tracked as an issue.
+the peak space needed is roughly double the file.
+
+**This only affects a fresh install.** `Setup-HomeServer.ps1` writes
+`qBittorrent.conf` when the file is absent and never touches it again, so an
+existing install keeps whatever it has. Change it under
+Preferences > Downloads, or delete the file and re-run Setup to have it
+rewritten.
 
 ### Hardlinks instead of copy — leave enabled
 

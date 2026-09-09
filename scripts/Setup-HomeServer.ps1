@@ -212,7 +212,12 @@ if (-not (Test-Path -LiteralPath $qbtConf)) {
         'Downloads\SavePath=/data/torrents/',
         'Downloads\TempPathEnabled=true',
         'Downloads\TempPath=/data/torrents/incomplete/',
-        'Downloads\PreAllocation=false',
+        # Pre-allocation on. It costs a slower start and more SSD writes, and it
+        # buys the thing that actually goes wrong here: hardlinks usually fail on
+        # an NTFS bind mount, so every import is a full copy and the peak space
+        # needed is roughly double the file. Running out mid-import is what this
+        # prevents, and the whole point of the stack is that nobody is watching.
+        'Downloads\PreAllocation=true',
         'General\Locale=en',
         'WebUI\Port=8080',
         'WebUI\CSRFProtection=false',
