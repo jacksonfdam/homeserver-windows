@@ -309,5 +309,5 @@ if ($activeProfiles -contains 'plex') { Write-Host ("  {0,-14} {1}" -f 'Plex', '
 if ($activeProfiles -contains 'usenet') { Write-Host ("  {0,-14} {1}" -f 'SABnzbd', "http://localhost:$(Get-EnvOrDefault -Conf $conf -Key 'SABNZBD_PORT' -Default '8085')") }
 if ($activeProfiles -contains 'utils') { Write-Host ("  {0,-14} {1}" -f 'Portainer', "http://localhost:$(Get-EnvOrDefault -Conf $conf -Key 'PORTAINER_PORT' -Default '9000')") }
 Write-Host ""
-Write-Host "  Remaining manual steps are listed in README.md under 'What the script cannot do'." -ForegroundColor DarkGray
+Write-Host "  Remaining manual steps are listed in docs/tuning.md, marked 'manual'." -ForegroundColor DarkGray
 Write-Host ""

@@ -82,8 +82,9 @@ libraries produce bad matches because the metadata sources differ.
 **API key:** Dashboard → Advanced → API Keys. Needed by the Homepage widget and
 by Jellyseerr.
 
-**Transcoding:** CPU only unless you have NVIDIA. See the README — there is no
-`/dev/dri` on Windows. If playback stutters, check whether the file has PGS
+**Transcoding:** CPU only unless you have NVIDIA. See
+[windows.md](windows.md#hardware-transcoding) — there is no `/dev/dri` on
+Windows. If playback stutters, check whether the file has PGS
 subtitles before blaming hardware; PGS is rendered onto the video and is far
 heavier than SRT.
 
@@ -301,6 +302,5 @@ bot protection, is not included.
 **Compose refuses to start a container: "an attempt was made to access a socket
 in a way forbidden by its access permissions".** Not a port conflict — nothing is
 listening. Hyper-V and WSL2 reserve ranges of dynamic ports and Windows blocks
-binding inside them. `netsh interface ipv4 show excludedportrange protocol=tcp`
-lists them; move the service to a port outside those ranges by editing its
-variable in `.env`. Port 9000, Portainer's default, is a frequent casualty.
+binding inside them. See
+[windows.md](windows.md#reserved-port-ranges).
