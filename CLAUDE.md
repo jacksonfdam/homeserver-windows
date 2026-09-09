@@ -28,6 +28,7 @@ scripts/New-Dashboard.ps1       generates Homepage YAML config
 scripts/Import-MangaLists.ps1   MangaDex/MangaFire lists -> Komga/Kavita
 scripts/Update-MangaBaka.ps1    mirrors the MangaBaka SQLite dump locally
 scripts/Get-HomeServerStatus.ps1  read-only report of what is configured and running
+scripts/Enter-HomeServer.ps1    interactive console: same state, plus acting on it
 scripts/Clear-StalledQueue.ps1  removes dead downloads, meant as a Scheduled Task
 docs/services.md                per-service reference: ports, access, integration
 docs/tuning.md                  automated vs manual vs deliberately-not-done settings
