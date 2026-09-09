@@ -78,6 +78,12 @@ skips anything already registered.
 Once it is up, `scripts\Start-HomeServerConsole.ps1` is the front door for
 everything afterwards — see [Day 2](#day-2).
 
+For how a title you type turns into a file you can watch — and the three things
+that have to be done by hand before any of it works — see
+[From a title to a playable file](docs/services.md#from-a-title-to-a-playable-file).
+The short version: you never search in qBittorrent. Radarr and Sonarr do the
+searching, against the indexers Prowlarr manages.
+
 ## The seven things that are different on Windows
 
 | Linux original | On Docker Desktop for Windows |
