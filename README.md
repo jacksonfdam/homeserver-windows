@@ -29,6 +29,7 @@ docker-compose.yml                   the stack
 .env.example                         paths, ports, timezone
 docs/services.md                     every service: ports, access, integration
 docs/tuning.md                       what is configured for you, what is not, and why
+docs/guide-parity.md                 the two source guides, step by step, with the deviations
 docs/manga-lists.md                  importing reading lists
 ```
 

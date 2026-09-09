@@ -33,6 +33,7 @@ scripts/Clear-StalledQueue.ps1       removes dead downloads, meant as a Schedule
 scripts/Test-Common.ps1              parses every script, smoke-tests the pure helpers
 docs/services.md                     per-service reference: ports, access, integration
 docs/tuning.md                       automated vs manual vs deliberately-not-done settings
+docs/guide-parity.md                 the two source guides walked step by step, deviations marked
 docs/manga-lists.md                  the list import flow
 ```
 

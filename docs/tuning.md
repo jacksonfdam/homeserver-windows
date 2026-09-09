@@ -9,6 +9,9 @@ guide and the follow-up on automatic Brazilian Portuguese dubbing — plus the
 [TRaSH Guides](https://trash-guides.info/) they draw their custom formats from,
 checked against what `Wire-Services.ps1` actually does today.
 
+For the same material walked in the guides' own order, with every deviation
+from them marked, see [guide-parity.md](guide-parity.md).
+
 Three states are used throughout:
 
 - **automated** — `Wire-Services.ps1` does it, and re-running is safe
