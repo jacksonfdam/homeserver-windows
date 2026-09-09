@@ -232,7 +232,12 @@ against the same folders for a week and keep the one you prefer.
 
 See `manga-anime-sync.md`. Lists come from AniList and MyAnimeList, identity is
 resolved through a local MangaBaka mirror, and acquisition goes through AIO
-Webtoon Downloader. None of it is wired yet.
+Webtoon Downloader.
+
+The mirror is the only part that exists: `Update-MangaBaka.ps1` downloads the
+nightly dump, verifies it against the published SHA1 and indexes it. Everything
+after that — reading the lists, resolving them, and fetching anything — is still
+to build.
 
 ### List import — automated, different thing
 
