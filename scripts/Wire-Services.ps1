@@ -19,16 +19,25 @@
          executable payloads, whole-disc rips and stereoscopic 3D. Sonarr gets
          a release profile for the first, Radarr gets all three
          (-ApplyQualityFloors)
+      7. optionally sets file and folder naming, stops PROPER releases from
+         jumping the scoring, and points both apps at a recycle bin
+         (-ApplyNaming)
 
     It deliberately does NOT add indexers. Which indexers you use, and whether
     you are entitled to what you pull from them, is your call to make.
 
+.PARAMETER ApplyNaming
+    Sets naming, propers and the recycle bin. Off by default because it enables
+    renaming on import: on a fresh install that is what you want, on an existing
+    library it renames everything on the next refresh.
+
 .EXAMPLE
-    .\Wire-Services.ps1 -ApplyQualityFloors
+    .\Wire-Services.ps1 -ApplyQualityFloors -ApplyNaming
 #>
 [CmdletBinding()]
 param(
-    [switch]$ApplyQualityFloors
+    [switch]$ApplyQualityFloors,
+    [switch]$ApplyNaming
 )
 
 $ErrorActionPreference = 'Stop'
@@ -381,6 +390,101 @@ if ($ApplyQualityFloors) {
     catch {
         Write-Fail "radarr custom formats: $($_.Exception.Message)"
     }
+}
+
+# --------------------------------------------------------- naming and imports
+if ($ApplyNaming) {
+    Write-Step "Naming, propers and the recycle bin"
+
+    # Naming is not cosmetic. Jellyfin, Plex, Komga and Kavita all read the file
+    # and folder name to work out what they are looking at, so carrying the IMDb
+    # id in the folder means the player matches on the id instead of guessing
+    # from the title. The anime format additionally carries absolute episode
+    # numbering, which is how anime releases are actually numbered - without it
+    # an anime library does not sort correctly, and that is the case this whole
+    # section exists for.
+    #
+    # Every token below was verified against a live Sonarr and Radarr rather
+    # than taken from documentation. Two field-level traps came out of that:
+    # colonReplacementFormat is an INTEGER in Sonarr (0 = delete) and a STRING
+    # in Radarr ("delete"), and the recycle bin path is validated for existence
+    # and write access inside the container before the PUT is accepted at all.
+    #
+    # skipFreeSpaceCheckWhenImporting is deliberately left alone. Turning it on
+    # is a common recommendation, but it disables the check that stops an import
+    # from filling the disk, and on a mount where hardlinks fail every import is
+    # a full copy.
+
+    $recycleBin = '/data/recycle'
+    $recycleDays = 14
+
+    $sonarrNaming = @{
+        renameEpisodes           = $true
+        replaceIllegalCharacters = $true
+        colonReplacementFormat   = 0
+        standardEpisodeFormat    = '{Series TitleYear} - S{season:00}E{episode:00} - {Episode CleanTitle} [{Quality Full}]{[MediaInfo VideoDynamicRangeType]}[{Mediainfo AudioCodec} {Mediainfo AudioChannels}][{MediaInfo VideoCodec}]{-Release Group}'
+        dailyEpisodeFormat       = '{Series TitleYear} - {Air-Date} - {Episode CleanTitle} [{Quality Full}]{[MediaInfo VideoDynamicRangeType]}[{Mediainfo AudioCodec} {Mediainfo AudioChannels}][{MediaInfo VideoCodec}]{-Release Group}'
+        animeEpisodeFormat       = '{Series TitleYear} - S{season:00}E{episode:00} - {absolute:000} - {Episode CleanTitle} [{Quality Full}]{[MediaInfo VideoDynamicRangeType]}[{MediaInfo VideoBitDepth}bit][{MediaInfo VideoCodec}][{Mediainfo AudioCodec} {Mediainfo AudioChannels}]{MediaInfo AudioLanguages}{-Release Group}'
+        seriesFolderFormat       = '{Series TitleYear} {imdb-{ImdbId}}'
+        seasonFolderFormat       = 'Season {season:00}'
+    }
+
+    $radarrNaming = @{
+        renameMovies             = $true
+        replaceIllegalCharacters = $true
+        colonReplacementFormat   = 'delete'
+        standardMovieFormat      = '{Movie CleanTitle} ({Release Year}) {imdb-{ImdbId}} [{Quality Full}]{[MediaInfo VideoDynamicRangeType]}[{Mediainfo AudioCodec} {Mediainfo AudioChannels}][{MediaInfo VideoCodec}]{-Release Group}'
+        movieFolderFormat        = '{Movie CleanTitle} ({Release Year}) {imdb-{ImdbId}}'
+    }
+
+    $namingTargets = @(
+        @{ svc = 'sonarr'; fields = $sonarrNaming },
+        @{ svc = 'radarr'; fields = $radarrNaming }
+    )
+
+    foreach ($t in $namingTargets) {
+        try {
+            # These are singleton config objects, not providers, so there is no
+            # /schema to build from - read the current one and override only the
+            # fields we care about, which keeps unknown fields intact.
+            $current = Invoke-ArrApi -BaseUrl $hostUrl[$t.svc] -ApiKey $apiKey[$t.svc] -Path '/api/v3/config/naming'
+            foreach ($key in $t.fields.Keys) {
+                $current | Add-Member -NotePropertyName $key -NotePropertyValue $t.fields[$key] -Force
+            }
+            $null = Invoke-ArrApi -BaseUrl $hostUrl[$t.svc] -ApiKey $apiKey[$t.svc] -Path '/api/v3/config/naming' -Method PUT -Body $current
+            Write-Ok "$($t.svc): naming set, renaming on import enabled"
+        }
+        catch {
+            Write-Fail "$($t.svc) naming: $($_.Exception.Message)"
+        }
+    }
+
+    foreach ($svc in @('sonarr', 'radarr')) {
+        try {
+            $mm = Invoke-ArrApi -BaseUrl $hostUrl[$svc] -ApiKey $apiKey[$svc] -Path '/api/v3/config/mediamanagement'
+            $mm | Add-Member -NotePropertyName 'downloadPropersAndRepacks' -NotePropertyValue 'doNotPrefer' -Force
+            $mm | Add-Member -NotePropertyName 'recycleBin' -NotePropertyValue $recycleBin -Force
+            $mm | Add-Member -NotePropertyName 'recycleBinCleanupDays' -NotePropertyValue $recycleDays -Force
+            try {
+                $null = Invoke-ArrApi -BaseUrl $hostUrl[$svc] -ApiKey $apiKey[$svc] -Path '/api/v3/config/mediamanagement' -Method PUT -Body $mm
+                Write-Ok "$svc`: propers not preferred, recycle bin $recycleBin kept $recycleDays days"
+            }
+            catch {
+                # The app rejects the whole object when the recycle bin is not
+                # writable, so the propers setting would be lost with it. Retry
+                # without the bin rather than losing both.
+                Write-Warn "$svc`: $recycleBin was rejected - is DATA_ROOT/recycle missing? Setting propers only."
+                $mm | Add-Member -NotePropertyName 'recycleBin' -NotePropertyValue '' -Force
+                $null = Invoke-ArrApi -BaseUrl $hostUrl[$svc] -ApiKey $apiKey[$svc] -Path '/api/v3/config/mediamanagement' -Method PUT -Body $mm
+                Write-Ok "$svc`: propers not preferred"
+            }
+        }
+        catch {
+            Write-Fail "$svc media management: $($_.Exception.Message)"
+        }
+    }
+
+    Write-Info "renaming applies on the next refresh, so an existing library will be renamed in bulk"
 }
 
 Write-Step "Wiring finished"
