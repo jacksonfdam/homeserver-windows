@@ -33,6 +33,17 @@ of bad releases.
 approach is to filter by public plus the categories you care about and add what
 looks useful.
 
+### Provider registration is schema-driven
+
+Worth knowing before editing the wiring. Instead of hardcoding the field list of
+a download client or an application, `New-ProviderFromSchema` fetches the app's
+own `/schema` endpoint and overrides only the fields it cares about. That is the
+difference between a script that works this month and one that works after the
+next *arr release.
+
+API keys are read straight out of `/config/config.xml` inside each running
+container, so nothing has to be copied between browser tabs.
+
 ### Release selection order
 
 Worth knowing before tuning anything, because it explains why a custom format

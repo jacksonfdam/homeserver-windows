@@ -6,13 +6,14 @@ and published at [akitaonrails/plex_home_server_docker](https://github.com/akita
 plus [Komga](https://komga.org/docs/introduction) and [Kavita](https://www.kavitareader.com/)
 for comics, manga and ebooks.
 
+The original runs on Ubuntu on an Intel NUC with a Synology NAS mounted at
+`/mnt/terachad`. That does not translate line by line to Docker Desktop on
+Windows, and most of the work here is in the parts that differ —
+see [docs/windows.md](docs/windows.md).
+
 Manga metadata and the cross-tracker ID map come from
 [MangaBaka](https://mangabaka.org/), whose database is licensed
 [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/).
-
-The original runs on Ubuntu on an Intel NUC with a Synology NAS mounted at
-`/mnt/terachad`. That setup does not translate line by line to Docker Desktop on
-Windows, and most of the work here is in the parts that differ.
 
 ```
 scripts/Setup-HomeServer.ps1         preflight -> folders -> .env -> compose up -> wiring
@@ -27,10 +28,6 @@ scripts/Test-Common.ps1              parse check + smoke test for the shared hel
 scripts/_Common.ps1                  shared helpers
 docker-compose.yml                   the stack
 .env.example                         paths, ports, timezone
-docs/services.md                     every service: ports, access, integration
-docs/tuning.md                       what is configured for you, what is not, and why
-docs/guide-parity.md                 the two source guides, step by step, with the deviations
-docs/manga-lists.md                  importing reading lists
 ```
 
 ## Prerequisites
@@ -54,282 +51,38 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 .\scripts\Setup-HomeServer.ps1 -DataRoot C:\media -ConfigRoot C:\homeserver\config
 ```
 
-qBittorrent 4.6.1 and newer no longer ship with a default password — they
-generate a random one on first start and write it to the log. To log in the
-first time, read it out:
+Optional service groups are Compose profiles — Plex alongside Jellyfin, SABnzbd
+for Usenet, Portainer and Watchtower:
 
 ```powershell
-docker logs qbittorrent | Select-String -Pattern "password"
-```
-
-Automation does not need it: `WebUI\AuthSubnetWhitelist` is set to the Docker
-bridge range, so the *arr containers reach the API without credentials while LAN
-clients still get a prompt.
-
-Optional service groups are Compose profiles:
-
-```powershell
-# Plex instead of / alongside Jellyfin, SABnzbd for Usenet, Portainer + Watchtower
 .\scripts\Setup-HomeServer.ps1 -Profiles plex,usenet,utils
 ```
 
 Re-running is safe. Every step checks before it writes, and the wiring script
 skips anything already registered.
 
-Once it is up, `scripts\Start-HomeServerConsole.ps1` is the front door for
-everything afterwards — see [Day 2](#day-2).
+qBittorrent 4.6.1 and newer no longer ship with a default password — they
+generate a random one on first start and write it to the log:
 
-## The seven things that are different on Windows
+```powershell
+docker logs qbittorrent | Select-String -Pattern "password"
+```
 
-| Linux original | On Docker Desktop for Windows |
+The automation does not need it: `WebUI\AuthSubnetWhitelist` is set to the
+Docker bridge range, so the *arr containers reach the API without credentials
+while LAN clients still get a prompt.
+
+Then open the dashboard on `http://localhost:3000`, and use
+`.\scripts\Start-HomeServerConsole.ps1` for everything afterwards.
+
+## Where to go next
+
+| | |
 | --- | --- |
-| `- /downloads`, `- /movies`, `- /tv` as separate mounts | one `- ${DATA_ROOT}:/data` mount per container |
-| hardlinks on ext4 | usually unavailable on NTFS bind mounts, so imports become copies |
-| `devices: - /dev/dri` for QSV/VAAPI | no `/dev/dri` at all; NVENC only, through WSL2 GPU support |
-| `network_mode: host` for Plex | not supported; explicit port maps + `ADVERTISE_IP` |
-| `PUID=1000` / `PGID=1000` mean something | mostly ignored on bind mounts; harmless, kept for the config dirs |
-| `/mnt/terachad/Videos` | `C:/media` — forward slashes, always |
-| cron / systemd timers | Windows Scheduled Tasks |
-
-### One root path, and why it matters
-
-Every container that moves files gets exactly one mount:
-
-```
-C:\media\                     ->  /data
-├── torrents\                 ->  /data/torrents        (qBittorrent writes here)
-│   ├── incomplete\
-│   ├── movies\  tv\  music\  manga\
-├── usenet\                   ->  /data/usenet          (SABnzbd, usenet profile)
-└── media\                    ->  /data/media           (the library)
-    ├── movies\  tv\  anime\  music\
-    └── manga\  comics\  books\
-```
-
-The article maps `/downloads`, `/movies` and `/tv` separately. Inside the
-container those are three different filesystems, so every import turns into a
-full copy across a mount boundary — slow, and it doubles the space while both
-copies exist. With a single `/data` mount, `torrents` and `media` are siblings on
-one filesystem, and Sonarr/Radarr can hardlink or instantly move instead.
-
-That is the theory. In practice, hardlinks on a bind-mounted NTFS drive normally
-fail under Docker Desktop, so the setup script **probes it for real** — it
-creates a hardlink inside a throwaway container and tells you the result. If it
-fails you have three options: accept the copies and keep free space, disable
-seeding retention, or move `DATA_ROOT` into the WSL2 filesystem
-(`\\wsl$\docker-desktop-data\...`) where hardlinks do work at the cost of
-awkward access from Windows.
-
-### Hardware transcoding
-
-`devices: - /dev/dri:/dev/dri` cannot work here: WSL2 does not expose Intel
-QuickSync or a VAAPI render node to containers. Your options, in order of how
-well they work:
-
-1. **Install Plex or Jellyfin natively on Windows** and point it at `C:\media`.
-   This is the only way to get QuickSync, and it is what I would do on a machine
-   with an Intel iGPU. Leave the rest of the stack in Docker.
-2. **NVENC in the container**, if you have an NVIDIA GPU: a current Windows
-   driver plus the commented-out `deploy.resources.reservations.devices` block in
-   `docker-compose.yml`.
-3. **CPU transcoding**, which is fine if your clients direct play. Which brings up
-   the article's best debugging story: playback stuttering that was not the CPU
-   at all, but PGS subtitles being rasterised and burned into the video stream.
-   If a file stutters, check the subtitle format before you blame the hardware.
-
-### Plex without host networking
-
-Docker Desktop has no `network_mode: host`, so Plex loses GDM auto-discovery on
-the LAN. The compose file maps the ports explicitly and sets `ADVERTISE_IP` from
-`HOST_IP` (auto-detected by the setup script). For the first start, get a token
-from [plex.tv/claim](https://plex.tv/claim) and put it in `.env` as
-`PLEX_CLAIM` — it expires after four minutes, so do it right before starting.
-
-Jellyfin has none of this friction, which is why it is in the default profile.
-
-## Ports
-
-| Service | URL | Role |
-| --- | --- | --- |
-| qBittorrent | http://localhost:8080 | download client |
-| Prowlarr | http://localhost:9696 | indexer manager, feeds the others |
-| Sonarr | http://localhost:8989 | TV |
-| Radarr | http://localhost:7878 | movies |
-| Lidarr | http://localhost:8686 | music |
-| Bazarr | http://localhost:6767 | subtitles |
-| Jellyfin | http://localhost:8096 | player |
-| Jellyseerr | http://localhost:5055 | requests |
-| Komga | http://localhost:25600 | comics / manga / ebooks |
-| Kavita | http://localhost:5001 | comics / manga / ebooks |
-| Plex | http://localhost:32400/web | player (`plex` profile) |
-| SABnzbd | http://localhost:8085 | usenet (`usenet` profile) |
-| Portainer | http://localhost:9000 | container UI (`utils` profile) |
-| Homepage | http://localhost:3000 | dashboard, start here |
-
-All overridable in `.env`. Kavita is on 5001 rather than its default 5000
-because Windows services and dev servers fight over that port constantly.
-
-Two readers are included on purpose — they overlap almost entirely, and it is
-worth running both against the same folders for a week before picking. Komga has
-the better library management and OPDS support; Kavita has the nicer reader and
-built-in progress sync.
-
-## What the wiring script does
-
-`Wire-Services.ps1` runs automatically at the end of setup and is idempotent:
-
-1. Reads each app's API key straight from `/config/config.xml` inside the
-   container.
-2. Registers qBittorrent as the download client in Sonarr, Radarr and Lidarr,
-   each with its own category (`tv-sonarr`, `radarr`, `lidarr`) so the queues
-   never get mixed.
-3. Creates the root folders under `/data/media`.
-4. Registers the three apps in Prowlarr with `fullSync`, so Prowlarr is the
-   single place indexers are managed — the article is emphatic about this, and it
-   is right: indexers added by hand inside Sonarr/Radarr are where the bad
-   releases came from.
-5. Points Bazarr at Sonarr and Radarr, turns on automatic subtitle
-   synchronisation and subtitle upgrades, and with `-SubtitleLanguage pb` creates
-   the language profile and makes it the default. That profile is not optional:
-   Bazarr silently ignores every item that has none, so without it the
-   integration downloads nothing.
-6. With `-ApplyQualityFloors`: sets a minimum size per quality definition (they
-   all ship at zero, which lets a 600 MB file pass as 2160p) and rejects three
-   kinds of release that are never worth the bandwidth — an executable payload
-   dressed up as a movie, a whole-disc rip most players will not play, and
-   stereoscopic 3D. Sonarr gets a release profile for the first; Radarr has no
-   such endpoint, so all three become custom formats scored at -10000, far under
-   the default minimum of 0, which refuses the release just the same.
-
-7. With `-ApplyNaming`: sets file and folder naming in Sonarr and Radarr, stops
-   PROPER releases from jumping ahead of your scoring, and points both at a
-   recycle bin under `/data/recycle`. Folders carry the IMDb id so the player
-   matches on the id rather than the title, and the anime format carries
-   absolute episode numbering — without which an anime library does not sort
-   correctly. Off by default because it enables renaming on import, which on an
-   existing library means a bulk rename on the next refresh.
-
-Instead of hardcoding provider field lists, it fetches each app's
-`/schema` endpoint and overrides only the fields it cares about. That is the
-difference between a script that works this month and one that works next year.
-
-The qBittorrent config is seeded before first start with the save paths, a fixed
-torrent port, and the excluded-filename list from the article
-(`*.exe`, `*.scr`, `*.bat`, …). That last one is the single most useful setting
-in the whole stack: a "complete" torrent whose only payload is a renamed
-executable never reaches disk, the import fails, and the release gets
-blocklisted automatically.
-
-Automation reaches the qBittorrent API without a password because
-`WebUI\AuthSubnetWhitelist` is set to `172.16.0.0/12` — the Docker bridge range
-only. LAN clients still get a login prompt.
-
-## What the script cannot do
-
-- **Jellyfin / Plex / Komga / Kavita first-run wizards.** Admin account creation
-  and library paths are interactive by design. Libraries point at
-  `/data/media/movies`, `/data/media/tv`, `/manga`, `/comics`, `/books`.
-- **Jellyseerr** needs you to sign in to your Plex or Jellyfin server first, then
-  it picks up Sonarr and Radarr in its own setup wizard.
-- **Indexers.** Not automated, deliberately. Prowlarr is installed and wired, but
-  which indexers you enable — and whether you are entitled to what you pull from
-  them — is yours to decide.
-- **FlareSolverr** from the original stack is not here. Its whole job is
-  defeating bot protection, and I would rather not ship that as a default.
-- **Bazarr language profiles.** Bazarr silently ignores any item without one, and
-  making one the default only affects items added afterwards, so assign it in
-  bulk to the existing library.
-
-## Day 2
-
-One prompt drives all of it:
-
-```powershell
-.\scripts\Start-HomeServerConsole.ps1
-```
-
-`status` reports what is configured, what is not, and what to run next. `up`,
-`down`, `restart`, `logs`, `open`, `wire`, `floors`, `naming`, `dashboard`,
-`mirror` and `clean` do the rest, and `help` lists them.
-
-Every command prints the equivalent command line before it runs. That makes the
-console a way to learn the scripts rather than a way to avoid them — and if it
-ever misbehaves, you copy what it printed and run that instead.
-
-Two commands refuse rather than surprise you. `naming` counts what the library
-already holds and makes you type the word out, because it renames every file on
-the next refresh and turning the setting back off does not undo it. `wire` will
-not run against a service that is not answering yet, since registering a
-provider in an app that has not finished starting is how half-configured stacks
-happen.
-
-For a shortcut or a script, one command and out:
-
-```powershell
-.\scripts\Start-HomeServerConsole.ps1 -Command status
-```
-
-Or by hand, which is what the console is calling anyway:
-
-```powershell
-# status / logs
-docker compose ps
-docker compose logs -f sonarr
-
-# stop, keeping data
-docker compose down
-
-# update everything
-docker compose pull; docker compose up -d
-
-# clean dead downloads (dry run, then for real)
-.\scripts\Clear-StalledQueue.ps1
-.\scripts\Clear-StalledQueue.ps1 -Apply
-
-# what is configured, what is not, and what to run next
-.\scripts\Get-HomeServerStatus.ps1
-```
-
-The two daily jobs — clearing dead downloads and refreshing the MangaBaka mirror
-— are not scheduled unless you ask:
-
-```powershell
-.\scripts\Setup-HomeServer.ps1 -RegisterTasks
-```
-
-Both run as you and only while you are logged on. Task Scheduler can change that,
-but it needs a stored password, so the script does not do it for you.
-
-Three Windows-specific things that will bite eventually:
-
-- **Reserved port ranges.** Compose fails with *"an attempt was made to access a
-  socket in a way forbidden by its access permissions"* — which is not the port
-  being in use. Hyper-V and WSL2 reserve blocks of dynamic ports and Windows
-  refuses to bind inside them, with nothing listening. Port 9000 lands in one
-  often enough that Portainer hits it. See which ranges are taken:
-
-  ```powershell
-  netsh interface ipv4 show excludedportrange protocol=tcp
-  ```
-
-  Then pick a port outside them — every port in this stack is a variable in
-  `.env`, so `PORTAINER_PORT=9001` and re-running is the whole fix.
-  `net stop winnat` and `net start winnat` clears the reservations instead, but
-  needs admin and they come back after a reboot.
-
-- **WSL2 memory.** Docker Desktop will happily take most of your RAM. Cap it in
-  `%UserProfile%\.wslconfig` with `[wsl2]` / `memory=8GB`.
-- **Drive sleep.** If `DATA_ROOT` is on an external or spun-down disk, containers
-  come back before the disk does after a reboot. Disable sleep for that drive.
-
-## Backup
-
-The only thing worth backing up is `CONFIG_ROOT`. It holds every app database,
-API key and setting, and it is small. Media is replaceable; two years of
-correctly organised metadata is not.
-
-```powershell
-docker compose down
-Compress-Archive -Path C:\homeserver\config\* -DestinationPath "C:\backups\homeserver-$(Get-Date -f yyyy-MM-dd).zip"
-docker compose up -d
-```
+| [docs/services.md](docs/services.md) | every service: ports, access, first-run wizards, and a symptom-to-cause table |
+| [docs/windows.md](docs/windows.md) | what Docker Desktop changes: one root mount, hardlinks, transcoding, reserved ports |
+| [docs/tuning.md](docs/tuning.md) | what is configured for you, what is not, and why |
+| [docs/guide-parity.md](docs/guide-parity.md) | the two source guides walked step by step, every deviation marked |
+| [docs/day-2.md](docs/day-2.md) | the console, maintenance commands, scheduled tasks, backup |
+| [docs/manga-lists.md](docs/manga-lists.md) | importing reading lists into Komga or Kavita |
+| [docs/manga-anime-sync.md](docs/manga-anime-sync.md) | the list-driven manga pipeline, still being built |

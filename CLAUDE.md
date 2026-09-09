@@ -32,8 +32,10 @@ scripts/Start-HomeServerConsole.ps1  interactive console: same state, plus actin
 scripts/Clear-StalledQueue.ps1       removes dead downloads, meant as a Scheduled Task
 scripts/Test-Common.ps1              parses every script, smoke-tests the pure helpers
 docs/services.md                     per-service reference: ports, access, integration
+docs/windows.md                      what Docker Desktop for Windows changes, and the gotchas
 docs/tuning.md                       automated vs manual vs deliberately-not-done settings
 docs/guide-parity.md                 the two source guides walked step by step, deviations marked
+docs/day-2.md                        console, maintenance, scheduled tasks, backup
 docs/manga-lists.md                  the list import flow
 ```
 
