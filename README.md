@@ -246,7 +246,20 @@ docker compose pull; docker compose up -d
 # clean dead downloads (dry run, then for real)
 .\scripts\Clear-StalledQueue.ps1
 .\scripts\Clear-StalledQueue.ps1 -Apply
+
+# what is configured, what is not, and what to run next
+.\scripts\Get-HomeServerStatus.ps1
 ```
+
+The two daily jobs — clearing dead downloads and refreshing the MangaBaka mirror
+— are not scheduled unless you ask:
+
+```powershell
+.\scripts\Setup-HomeServer.ps1 -RegisterTasks
+```
+
+Both run as you and only while you are logged on. Task Scheduler can change that,
+but it needs a stored password, so the script does not do it for you.
 
 Two Windows-specific things that will bite eventually:
 

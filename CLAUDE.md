@@ -114,9 +114,11 @@ re-verify rather than guessing:
   Do not try to automate account creation.
 - **Radarr has no release-profile endpoint**, so the executable filter exists only
   in Sonarr. The Radarr equivalent would be a custom format.
-- **`Clear-StalledQueue.ps1` is not registered as a Scheduled Task automatically**
-  — the command is documented in its help block, but registering system tasks
-  without being asked is rude.
+- **Scheduled tasks are opt-in.** `Setup-HomeServer.ps1 -RegisterTasks`
+  registers the two daily jobs; without the switch nothing is scheduled, because
+  creating scheduled work on someone's machine unasked is intrusive. Both run as
+  the invoking user and only while logged on — changing that needs a stored
+  password, which the script will not prompt for.
 - **Hardlinks almost certainly fail on the NTFS bind mount.**
   `Setup-HomeServer.ps1` probes this at runtime with a throwaway container rather
   than assuming. If someone reports slow imports, that probe result is the first

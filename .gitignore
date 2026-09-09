@@ -20,3 +20,8 @@ mangabaka/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Tombstones the SMB server leaves behind when a file on the share is replaced
+# while something still has it open. This repo is normally worked on over such
+# a share, so they turn up often enough to be worth ignoring.
+.smbdelete*

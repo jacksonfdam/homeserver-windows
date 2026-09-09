@@ -429,3 +429,52 @@ function Get-MirrorState {
     }
     return $state
 }
+
+# Windows Scheduled Tasks are how the cron jobs from the Linux original are
+# expressed here. Registering one is opt-in on purpose: creating scheduled work
+# on someone's machine without being asked is intrusive, so Setup-HomeServer.ps1
+# only calls this behind -RegisterTasks.
+function Register-HomeServerTask {
+    param(
+        [Parameter(Mandatory = $true)][string]$Name,
+        [Parameter(Mandatory = $true)][string]$ScriptPath,
+        [Parameter(Mandatory = $true)][datetime]$At,
+        [string]$ScriptArguments = ''
+    )
+    if (-not (Get-Command Register-ScheduledTask -ErrorAction SilentlyContinue)) {
+        Write-Warn "the ScheduledTasks module is unavailable, so '$Name' was not registered"
+        return $false
+    }
+    if (-not (Test-Path -LiteralPath $ScriptPath)) {
+        Write-Fail "$Name: $ScriptPath does not exist"
+        return $false
+    }
+
+    $existing = Get-ScheduledTask -TaskName $Name -ErrorAction SilentlyContinue
+    if ($existing) {
+        Write-Info "$Name already registered, leaving it alone"
+        return $true
+    }
+
+    # -NoProfile keeps a slow or noisy user profile out of an unattended run,
+    # and the path is quoted because CONFIG_ROOT and the repo path may contain
+    # spaces.
+    $argument = "-NoProfile -ExecutionPolicy Bypass -File `"$ScriptPath`""
+    if ($ScriptArguments) { $argument = "$argument $ScriptArguments" }
+
+    try {
+        $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $argument
+        $trigger = New-ScheduledTaskTrigger -Daily -At $At
+        # StartWhenAvailable matters on a machine that sleeps: without it a task
+        # whose window was missed is skipped entirely rather than run late.
+        $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 2)
+        $null = Register-ScheduledTask -TaskName $Name -Action $action -Trigger $trigger `
+            -Settings $settings -Description 'homeserver maintenance'
+        Write-Ok "registered $Name, daily at $($At.ToString('HH:mm'))"
+        return $true
+    }
+    catch {
+        Write-Fail "could not register ${Name}: $($_.Exception.Message)"
+        return $false
+    }
+}
