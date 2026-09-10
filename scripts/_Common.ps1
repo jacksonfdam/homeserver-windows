@@ -586,6 +586,25 @@ function ConvertFrom-MalProgress {
     return $out
 }
 
+# Series titles become folder names, and both Komga and Kavita treat a folder as
+# a series - so this is the one place a bad character stops the whole thing from
+# appearing in the library. NTFS refuses \ / : * ? " < > | outright, and a name
+# ending in a dot or a space is accepted by the API and then unreachable by
+# path, which is worse than a refusal.
+function ConvertTo-SafeFolderName {
+    param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Name)
+
+    if (-not $Name) { return 'untitled' }
+    $safe = $Name -replace '[\\/:*?"<>|]', ' '
+    $safe = ($safe -replace '\s+', ' ').Trim()
+    # Windows caps a path component at 255 and the file name has to fit inside
+    # the same limit, so this leaves room rather than spending the whole budget.
+    if ($safe.Length -gt 120) { $safe = $safe.Substring(0, 120).Trim() }
+    $safe = $safe.TrimEnd('.', ' ')
+    if (-not $safe) { return 'untitled' }
+    return $safe
+}
+
 # A pasted MAL list has no delimiters worth trusting: every cell lands on its own
 # line, the Score cell is simply absent when unscored, and the Type cell is
 # absent from the Completed section's header. So this classifies each line
