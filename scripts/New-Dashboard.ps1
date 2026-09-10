@@ -240,7 +240,7 @@ description: Media, comics and automation
 startUrl: http://${hostIp}:$hpPort
 
 theme: dark
-color: slate
+color: violet
 headerStyle: boxed
 hideVersion: true
 
