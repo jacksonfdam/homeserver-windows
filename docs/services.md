@@ -44,6 +44,7 @@ managed**, and it pushes them into the other three.
 | 8085 | SABnzbd | `usenet` profile |
 | 9000 | Portainer | `utils` profile. Container UI |
 | — | Watchtower | `utils` profile. Pulls new images at 04:00 daily and restarts |
+| — | AIO | `manga` profile. No listener: a downloader run one command at a time by `Get-MangaChapters.ps1` |
 
 Everything the wiring script sets up for you — download clients, root folders,
 Prowlarr registration, Bazarr — is in [tuning.md](tuning.md). First-run wizards
@@ -195,14 +196,34 @@ indexer problem.
 Nothing here needs babysitting. If it stalls, `Clear-StalledQueue.ps1` clears
 dead entries and blocklists the release so the app looks for another source.
 
-### Manga does not work this way yet
+### Manga does not work this way
 
-Komga and Kavita display what is in `/data/media/manga`, but **nothing in this
-stack searches for or downloads manga.** `Import-MangaLists.ps1` compares a
-MangaDex or MangaFire list against what is already in your library and writes a
-CSV of what is missing — a shopping list, not a queue.
+Manga has no Prowlarr, no torrents and no *arr app. It is a second pipeline
+that happens to end in the same folder:
 
-The design for closing that is in [manga-anime-sync.md](manga-anime-sync.md).
+```
+your list (MyAnimeList export or paste)
+        │  Import-MangaLists.ps1
+        ▼
+what is missing  ──►  lists/missing-<date>.csv
+        │  Get-MangaChapters.ps1  (dry run first)
+        ▼
+   aio container  ──►  CBZ + ComicInfo.xml in /data/media/manga/<Series>/
+        │
+        ▼
+   Komga / Kavita
+```
+
+Two commands, and the split between them is deliberate: the first is
+bookkeeping against your own library, the second pulls chapters off aggregator
+sites. Full detail in [manga-lists.md](manga-lists.md); the pipeline's design
+and what is still missing from it in
+[manga-anime-sync.md](manga-anime-sync.md).
+
+The `aio` service is behind the `manga` profile, has no port, and is run one
+command at a time — `Get-MangaChapters.ps1` is the way in. Compose builds it on
+first use: several minutes, roughly 2 GB.
+
 Komga and Kavita still need their libraries created in their own first-run
 wizards, pointed at `/data/media/manga`, `/data/media/comics` and
 `/data/media/books`.
@@ -221,3 +242,5 @@ wizards, pointed at `/data/media/manga`, `/data/media/comics` and
 | playback stutters on good hardware | PGS subtitles being burned in; switch to an SRT track |
 | a service is unreachable after reboot | the data drive spun up after the containers started |
 | a container will not bind its port | not a conflict — a range Windows reserves ([windows.md](windows.md#reserved-port-ranges)) |
+| a downloaded manga shows up as one book per file | it landed flat instead of in a per-series folder; `Get-MangaChapters.ps1` passes one `-o` per series |
+| a manga series has the wrong chapters in it | the search picked a spin-off; re-run the dry run and raise `-MinMatch` |
