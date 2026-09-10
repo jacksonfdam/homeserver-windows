@@ -1,4 +1,4 @@
-# Importing reading lists from MangaDex and MangaFire
+# Importing reading lists from MyAnimeList, MangaDex and MangaFire
 
 Get this straight first: **a list is a set of titles, not files.** Komga and
 Kavita only index what exists on disk, so `Import-MangaLists.ps1` reports two
@@ -36,6 +36,50 @@ It prompts for the client id/secret, exchanges them at `auth.mangadex.org` for a
 short-lived token and keeps it in memory only. Pass `-AccessToken` to skip the
 prompts. Requests are spaced 250 ms apart, because MangaDex rate limits at
 roughly 5/second.
+
+**MyAnimeList** has two routes, and the first one is better.
+
+The official export is under mal.net → Profile → Lists → *Export*, which mails
+you a gzipped XML. Pass it as-is; it does not need unpacking, and MAL does not
+always name it `.gz`.
+
+```powershell
+.\scripts\Import-MangaLists.ps1 -Source MyAnimeList -Path .\lists\mal.xml.gz -Status Reading
+```
+
+Prefer it because it carries `manga_mangadb_id` — the MAL id, which is what
+[MangaBaka](manga-anime-sync.md) cross-maps to AniList and MangaUpdates. Titles
+are the fuzzy part of this whole script; an id is not.
+
+The second route needs nothing at all: open your manga list in the browser,
+select the table, copy, paste into a `.txt` and pass that.
+
+```powershell
+.\scripts\Import-MangaLists.ps1 -Source MyAnimeList -Path .\lists\mal.txt -Status Reading
+```
+
+It exists because MAL's API needs a registered client id, and a copy always
+works. What you lose is the id, so everything falls back to title matching.
+
+Two things about that paste, both of which the parser handles and neither of
+which is obvious:
+
+- **MAL omits the Score cell rather than emptying it.** A row you have not
+  scored has one fewer cell than a row you have, so anything counting columns
+  reads `0/232` as a score of 232. The parser classifies each cell instead —
+  status header, column header, media type, progress, or a title.
+- **A title that is *entirely* a progress cell would be misread.** `Kaiju No.8`
+  and `20th Century Boys` are safe; a manga titled exactly `86` would attach
+  itself to the row above.
+
+`-Status` takes any of `Reading`, `Completed`, `Paused`, `Dropped`, `Planning`
+and defaults to all of them. Worth being deliberate: `Planning` is a wishlist
+and `Paused` is usually a much larger backlog than `Reading`. It also names the
+collection, so `-Status Reading` lands in a Komga collection called
+`MyAnimeList Reading`.
+
+**AniList is not a source yet.** Its API is switched off by its own maintainers,
+and until it returns the way in is the same paste.
 
 **MangaFire has no API** and the bookmark page is behind your session. Scroll to
 the bottom first — only what is in the DOM gets exported — then in the DevTools
