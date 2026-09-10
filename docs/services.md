@@ -32,6 +32,7 @@ managed**, and it pushes them into the other three.
 | 25600 | Komga | wizard: first account, then libraries on `/data/comics`, `/data/manga`, `/data/books`. API key under Account settings |
 | 5001 | Kavita | wizard: admin account, then libraries on `/manga`, `/comics`, `/books` — **at the root, not under `/data`** |
 | 5055 | Jellyseerr | wizard: sign in to Jellyfin or Plex *first*, then add `http://sonarr:8989` and `http://radarr:7878` with their keys |
+| 5056 | Seerr | `ghcr.io/seerr-team/seerr`, the successor. Running alongside Jellyseerr for now, same manual first run |
 | 8989 | Sonarr | TV and anime. Set series type *Anime* per anime series |
 | 7878 | Radarr | movies |
 | 8686 | Lidarr | music. Quality profile *Lossless* for FLAC only, *Any* otherwise |
@@ -104,6 +105,20 @@ to be edited.
 
 Shipping a definition is not the same as adding an indexer. Torrentio still has
 to be added and configured in Prowlarr like any other.
+
+**Two request front ends are running on purpose, and temporarily.** Seerr is the
+successor to Overseerr and Jellyseerr, and it is up *alongside* Jellyseerr so the
+two can be compared before one is dropped — they share a lineage, a config layout
+(`/app/config`) and a container port, hence 5056 on the host. Both write to the
+same Sonarr and Radarr, which duplicates requests and splits approvals, so this
+is a state to leave rather than settle into: pick one, then delete the other's
+service block and config directory.
+
+Seerr also takes no `PUID`/`PGID` — it runs as its own `node` user and wants the
+config directory owned by it, which a Docker Desktop bind mount largely ignores.
+Nothing here chowns anything; it is only why that service block looks different
+from the rest. Migrating an existing Jellyseerr config is documented upstream but
+untried here, so treat Seerr as a fresh install.
 
 **SABnzbd** needs the same payload protection applied by hand: in `sabnzbd.ini`
 under `[misc]`, set `unwanted_extensions` to the same list and

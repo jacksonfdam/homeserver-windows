@@ -163,7 +163,7 @@ foreach ($d in $dataDirs) {
 }
 Write-Ok "$($dataDirs.Count) directories under $dataRootWin"
 
-$configDirs = @('qbittorrent', 'sabnzbd', 'prowlarr', 'sonarr', 'radarr', 'lidarr', 'bazarr', 'jellyfin', 'plex', 'jellyseerr', 'komga', 'kavita')
+$configDirs = @('qbittorrent', 'sabnzbd', 'prowlarr', 'sonarr', 'radarr', 'lidarr', 'bazarr', 'jellyfin', 'plex', 'jellyseerr', 'seerr', 'komga', 'kavita')
 foreach ($d in $configDirs) {
     $full = Join-Path $configRootWin $d
     if (-not (Test-Path -LiteralPath $full)) { New-Item -ItemType Directory -Path $full -Force | Out-Null }
@@ -316,6 +316,7 @@ $endpoints = [ordered]@{
     'Bazarr'      = "http://localhost:$(Get-EnvOrDefault -Conf $conf -Key 'BAZARR_PORT' -Default '6767')"
     'Jellyfin'    = "http://localhost:$(Get-EnvOrDefault -Conf $conf -Key 'JELLYFIN_PORT' -Default '8096')"
     'Jellyseerr'  = "http://localhost:$(Get-EnvOrDefault -Conf $conf -Key 'JELLYSEERR_PORT' -Default '5055')"
+    'Seerr'       = "http://localhost:$(Get-EnvOrDefault -Conf $conf -Key 'SEERR_PORT' -Default '5056')"
     'Komga'       = "http://localhost:$(Get-EnvOrDefault -Conf $conf -Key 'KOMGA_PORT' -Default '25600')"
     'Kavita'      = "http://localhost:$(Get-EnvOrDefault -Conf $conf -Key 'KAVITA_PORT' -Default '5001')"
 }

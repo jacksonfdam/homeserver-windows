@@ -215,6 +215,28 @@ services:
     ports:
       - "${JELLYSEERR_PORT:-5055}:5055"
 
+  # Seerr is the successor to Overseerr and Jellyseerr, so this overlaps with
+  # jellyseerr above on purpose and temporarily - both are running so they can be
+  # compared before one is dropped. They cannot share port 5055, hence 5056.
+  #
+  # No PUID/PGID: unlike the linuxserver images this one runs as its own `node`
+  # user at UID 1000 and wants the config directory owned by it. On a Docker
+  # Desktop bind mount that ownership is largely ignored, which is why nothing
+  # here chowns anything - but it is the reason this service looks different.
+  seerr:
+    <<: *restart
+    image: ghcr.io/seerr-team/seerr:latest
+    container_name: seerr
+    networks: [homeserver]
+    depends_on: [sonarr, radarr]
+    environment:
+      TZ: ${TZ:-Europe/Stockholm}
+      PORT: 5055
+    volumes:
+      - ${CONFIG_ROOT}/seerr:/app/config
+    ports:
+      - "${SEERR_PORT:-5056}:5055"
+
   # --------------------------------------------------------- comics / manga / books
   komga:
     <<: *restart

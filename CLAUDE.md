@@ -138,8 +138,17 @@ re-verify rather than guessing:
 
 ## Not done yet
 
-- **Jellyseerr wiring is manual.** It needs a Jellyfin/Plex login before it will
-  accept Sonarr/Radarr settings, so the wizard cannot be skipped.
+- **Jellyseerr and Seerr are both running, deliberately and temporarily.** Seerr
+  is the successor to Overseerr and Jellyseerr; they are side by side so they can
+  be compared before one is dropped, which is why Seerr is on host port 5056
+  rather than the 5055 they both want. Two request front ends writing to the same
+  Sonarr and Radarr duplicates requests and splits approvals, so this is a state
+  to leave rather than settle into. Seerr also breaks the `PUID`/`PGID` pattern:
+  it runs as its own `node` user at UID 1000, which a Docker Desktop bind mount
+  largely ignores.
+- **Neither request front end is wired automatically.** Both need a Jellyfin,
+  Plex or Emby login before they will accept Sonarr and Radarr settings, so the
+  wizard cannot be skipped.
 - **Bazarr's settings endpoint has three traps**, all established against a live
   instance. Booleans must be lower case: `'True'` is rejected with 406 and the
   whole form is discarded with it, which is why this wiring silently did nothing

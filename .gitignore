@@ -30,3 +30,8 @@ desktop.ini
 # tracked: it exists to move an error message from there to here, and it has
 # already been swept up once by a careless `git add -A`.
 temp.txt
+
+# Reference material saved into the working copy while researching - guides,
+# printouts. Someone else's writing, and this repository is public, so it stays
+# out of it. What was learned from them lives in docs/tuning.md instead.
+*.pdf
