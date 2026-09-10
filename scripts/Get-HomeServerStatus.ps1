@@ -218,6 +218,72 @@ else {
     if ($probed -eq 0) { Write-Info "no *arr app is running, so there is nothing to probe" }
 }
 
+# ---------------------------------------------------------------- 5b. Prowlarr
+# Prowlarr is the hinge: the only place indexers are managed, and the thing that
+# pushes them into the *arr apps. It was invisible here, which is how it stayed
+# broken for a long time while every other line reported success.
+Write-Step "Prowlarr"
+
+$prowlarrSvc = $services | Where-Object { $_.container -eq 'prowlarr' }
+if (-not $containers.ContainsKey('prowlarr')) {
+    Write-Info "not running"
+}
+elseif ($Quick) {
+    Write-Info "-Quick set, skipping the Prowlarr probe"
+}
+else {
+    $defsPath = Join-Path $configRootWin 'prowlarr\Definitions\Custom'
+    $pw = Get-ProwlarrState -BaseUrl "http://localhost:$($prowlarrSvc.port)" -DefinitionsPath $defsPath
+
+    if ($pw.error) {
+        Write-Fail $pw.error
+    }
+    else {
+        if ($pw.applications.Count -gt 0) {
+            foreach ($a in $pw.applications) {
+                $sync = $a.syncLevel
+                if (-not $sync) { $sync = 'unknown sync level' }
+                Write-Ok "$($a.name) registered, $sync"
+            }
+        }
+        else {
+            Write-Warn "no applications registered - Prowlarr has nowhere to push indexers"
+            $todo += ".\scripts\Wire-Services.ps1   # registers Sonarr, Radarr and Lidarr in Prowlarr"
+        }
+
+        if ($pw.indexerCount -eq 0) {
+            Write-Warn "no indexers - this is why a search in Sonarr or Radarr finds nothing"
+            Write-Info "add them in Prowlarr > Indexers, then Sync App Indexers. Which ones is your call."
+        }
+        else {
+            Write-Ok "$($pw.indexerEnabled) of $($pw.indexerCount) indexer(s) enabled"
+            if ($pw.failingCount -gt 0) {
+                Write-Warn "$($pw.failingCount) indexer(s) have recorded failures - see Prowlarr > Indexers"
+            }
+        }
+
+        # A proxy whose target is down is worse than no proxy: every indexer
+        # carrying its tag fails rather than falling back, which is why these two
+        # facts are reported together instead of separately.
+        if ($pw.proxies.Count -gt 0) {
+            $proxyList = $pw.proxies -join ', '
+            if ($containers.ContainsKey('flaresolverr')) {
+                Write-Ok "indexer proxy: $proxyList, and flaresolverr is up"
+            }
+            else {
+                Write-Warn "indexer proxy '$proxyList' is registered but flaresolverr is NOT running"
+                Write-Host "             every indexer tagged with it will fail rather than fall back" -ForegroundColor Yellow
+                $todo += 'docker compose --profile flaresolverr up -d flaresolverr'
+            }
+        }
+
+        if ($pw.customDefs -gt 0) {
+            Write-Ok "$($pw.customDefs) custom definition(s) installed"
+            Write-Info "a definition only makes an indexer available to add - adding it is still manual"
+        }
+    }
+}
+
 # ------------------------------------------------------------ 6. manga mirror
 Write-Step "MangaBaka mirror"
 

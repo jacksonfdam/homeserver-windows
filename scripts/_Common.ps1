@@ -488,3 +488,72 @@ function Register-HomeServerTask {
         return $false
     }
 }
+
+# Prowlarr is the hinge of the whole stack - it is the only place indexers are
+# managed and it pushes them into the *arr apps - and none of that was visible
+# from the status report. Its shape is different enough from an *arr app that it
+# gets its own probe rather than being squeezed into Get-ArrState.
+function Get-ProwlarrState {
+    param(
+        [Parameter(Mandatory = $true)][string]$BaseUrl,
+        [Parameter(Mandatory = $true)][string]$DefinitionsPath
+    )
+    $state = [PSCustomObject]@{
+        apiKeyFound     = $false
+        applications    = @()
+        indexerCount    = 0
+        indexerEnabled  = 0
+        failingCount    = 0
+        proxies         = @()
+        customDefs      = 0
+        error           = ''
+    }
+
+    $key = Get-ArrApiKey -Container 'prowlarr' -TimeoutSec 10
+    if (-not $key) {
+        $state.error = 'could not read the API key from the container'
+        return $state
+    }
+    $state.apiKeyFound = $true
+
+    # Counted from disk rather than the API: a definition is a file Prowlarr
+    # reads at startup, and it is not an indexer until someone adds it. Seeing
+    # the file is the only way to know Setup-HomeServer.ps1 delivered it.
+    if (Test-Path -LiteralPath $DefinitionsPath) {
+        $state.customDefs = @(Get-ChildItem -LiteralPath $DefinitionsPath -Filter '*.yml' -File -ErrorAction SilentlyContinue).Count
+    }
+
+    try {
+        $apps = Invoke-ArrApi -BaseUrl $BaseUrl -ApiKey $key -Path '/api/v1/applications'
+        $seen = @()
+        foreach ($a in @($apps)) {
+            if (-not $a) { continue }
+            $sync = ''
+            if ($a.PSObject.Properties.Name -contains 'syncLevel') { $sync = $a.syncLevel }
+            $seen += [PSCustomObject]@{ name = $a.name; syncLevel = $sync }
+        }
+        $state.applications = @($seen)
+
+        $indexers = @(Invoke-ArrApi -BaseUrl $BaseUrl -ApiKey $key -Path '/api/v1/indexer')
+        $state.indexerCount = $indexers.Count
+        $enabled = 0
+        foreach ($i in $indexers) {
+            if ($i -and ($i.PSObject.Properties.Name -contains 'enable') -and $i.enable) { $enabled++ }
+        }
+        $state.indexerEnabled = $enabled
+
+        # /indexerstatus only carries records for indexers that have failed, so
+        # the count is the answer - no field names to depend on.
+        $failing = @(Invoke-ArrApi -BaseUrl $BaseUrl -ApiKey $key -Path '/api/v1/indexerstatus')
+        $state.failingCount = $failing.Count
+
+        $proxies = Invoke-ArrApi -BaseUrl $BaseUrl -ApiKey $key -Path '/api/v1/indexerproxy'
+        $names = @()
+        foreach ($p in @($proxies)) { if ($p -and $p.name) { $names += $p.name } }
+        $state.proxies = @($names)
+    }
+    catch {
+        $state.error = $_.Exception.Message
+    }
+    return $state
+}
