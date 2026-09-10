@@ -164,6 +164,7 @@ Jellyfin has none of this friction, which is why it is in the default profile.
 | Bazarr | http://localhost:6767 | subtitles |
 | Jellyfin | http://localhost:8096 | player |
 | Jellyseerr | http://localhost:5055 | requests |
+| Seerr | http://localhost:5056 | requests, the successor to Jellyseerr |
 | Komga | http://localhost:25600 | comics / manga / ebooks |
 | Kavita | http://localhost:5001 | comics / manga / ebooks |
 | Plex | http://localhost:32400/web | player (`plex` profile) |
