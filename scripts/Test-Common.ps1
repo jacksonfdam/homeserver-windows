@@ -182,6 +182,65 @@ try {
         $s = Get-MirrorState -Root (Join-Path $work 'nope')
         if ($s.present) { throw 'present should be false' }
     }
+
+    Test-Case 'ConvertFrom-MalProgress reads all three shapes' {
+        $a = ConvertFrom-MalProgress -Token '12'
+        if ($a.read -ne 12 -or $a.total -ne 0) { throw "bare: $($a.read)/$($a.total)" }
+        $b = ConvertFrom-MalProgress -Token '12/34'
+        if ($b.read -ne 12 -or $b.total -ne 34) { throw "slash: $($b.read)/$($b.total)" }
+        $c = ConvertFrom-MalProgress -Token '12/34 [56]'
+        if ($c.read -ne 12 -or $c.total -ne 34 -or $c.available -ne 56) { throw "full: $($c | ConvertTo-Json -Compress)" }
+    }
+
+    Test-Case 'ConvertFrom-MalProgress survives an empty cell' {
+        $r = ConvertFrom-MalProgress -Token ''
+        if ($r.read -ne 0) { throw "got $($r.read)" }
+    }
+
+    Test-Case 'ConvertFrom-MalListText assigns the section status' {
+        $t = @('Reading', 'Title', 'Score', 'Chapters', 'Volumes', 'Type',
+               'Some Series', '9', '122 [152]', '0', 'Manga') -join "`n"
+        $e = @(ConvertFrom-MalListText -Text $t)
+        if ($e.Count -ne 1) { throw "$($e.Count) entries" }
+        if ($e[0].status -ne 'Reading') { throw "status '$($e[0].status)'" }
+        if ($e[0].title -ne 'Some Series') { throw "title '$($e[0].title)'" }
+        if ($e[0].score -ne '9') { throw "score '$($e[0].score)'" }
+        if ($e[0].chaptersAvailable -ne 152) { throw "available $($e[0].chaptersAvailable)" }
+    }
+
+    # The trap the whole classifier exists for: MAL omits the Score cell rather
+    # than emptying it, so counting columns reads the chapter count as a score.
+    Test-Case 'ConvertFrom-MalListText does not invent a score' {
+        $t = @('Reading', 'Chainsaw Man', '0/232', '0/24', 'Manga') -join "`n"
+        $e = @(ConvertFrom-MalListText -Text $t)
+        if ($e[0].score -ne '') { throw "score came back '$($e[0].score)'" }
+        if ($e[0].chaptersTotal -ne 232) { throw "chapters $($e[0].chaptersTotal)" }
+        if ($e[0].volumesTotal -ne 24) { throw "volumes $($e[0].volumesTotal)" }
+    }
+
+    # 'Completed Manga' is a section header, not a series called Completed.
+    Test-Case 'ConvertFrom-MalListText reads a header carrying a type' {
+        $t = @('Reading', 'A', '1', 'Manga', 'Completed Manga', 'B', '2', 'Manga') -join "`n"
+        $e = @(ConvertFrom-MalListText -Text $t)
+        if ($e.Count -ne 2) { throw "$($e.Count) entries: $(($e.title) -join ', ')" }
+        if ($e[1].status -ne 'Completed') { throw "status '$($e[1].status)'" }
+        if ($e[1].title -ne 'B') { throw "title '$($e[1].title)'" }
+    }
+
+    Test-Case 'ConvertFrom-MalListText keeps Light Novel apart from Manga' {
+        $t = @('Planning', 'Same Title', '0', '0', 'Manga',
+               'Same Title', '0/334', '0/26', 'Light Novel') -join "`n"
+        $e = @(ConvertFrom-MalListText -Text $t)
+        if ($e.Count -ne 2) { throw "$($e.Count) entries" }
+        if ($e[1].type -ne 'Light Novel') { throw "type '$($e[1].type)'" }
+    }
+
+    Test-Case 'ConvertFrom-MalListText accepts tab-separated rows' {
+        $t = "Reading`nTitle`tScore`tChapters`tVolumes`tType`nSome Series`t7`t10/30`t0`tManga"
+        $e = @(ConvertFrom-MalListText -Text $t)
+        if ($e.Count -ne 1) { throw "$($e.Count) entries" }
+        if ($e[0].chaptersRead -ne 10) { throw "read $($e[0].chaptersRead)" }
+    }
 }
 finally {
     Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
