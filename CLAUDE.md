@@ -36,6 +36,7 @@ docs/windows.md                      what Docker Desktop for Windows changes, an
 docs/tuning.md                       automated vs manual vs deliberately-not-done settings
 docs/guide-parity.md                 the two source guides walked step by step, deviations marked
 docs/day-2.md                        console, maintenance, scheduled tasks, backup
+docs/jellyfin-plugins.md             optional Jellyfin plugins, JellyBridge, theming
 docs/manga-lists.md                  the list import flow
 ```
 

@@ -27,7 +27,7 @@ managed**, and it pushes them into the other three.
 | Port | Service | What you have to do |
 | --- | --- | --- |
 | 3000 | Homepage | dashboard, start here. `.\scripts\New-Dashboard.ps1` generates it |
-| 8096 | Jellyfin | wizard: admin user, then libraries on `/data/media/movies`, `/tv`, `/anime`. API key under Dashboard → Advanced |
+| 8096 | Jellyfin | wizard: admin user, then libraries on `/data/media/movies`, `/tv`, `/anime`. API key under Dashboard → Advanced. Plugins and theming: [jellyfin-plugins.md](jellyfin-plugins.md) |
 | 32400 | Plex | `plex` profile. Claim token in `.env` first, then `docker compose --profile plex up -d plex` |
 | 25600 | Komga | wizard: first account, then libraries on `/data/comics`, `/data/manga`, `/data/books`. API key under Account settings |
 | 5001 | Kavita | wizard: admin account, then libraries on `/manga`, `/comics`, `/books` — **at the root, not under `/data`** |

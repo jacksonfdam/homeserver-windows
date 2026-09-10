@@ -91,6 +91,7 @@ searching, against the indexers Prowlarr manages.
 | [docs/windows.md](docs/windows.md) | what Docker Desktop changes: one root mount, hardlinks, transcoding, reserved ports |
 | [docs/tuning.md](docs/tuning.md) | what is configured for you, what is not, and why |
 | [docs/guide-parity.md](docs/guide-parity.md) | the two source guides walked step by step, every deviation marked |
+| [docs/jellyfin-plugins.md](docs/jellyfin-plugins.md) | skip-intro, trailers, a Jellyseerr discovery row, and a theme |
 | [docs/day-2.md](docs/day-2.md) | the console, maintenance commands, scheduled tasks, backup |
 | [docs/manga-lists.md](docs/manga-lists.md) | importing reading lists into Komga or Kavita |
 | [docs/manga-anime-sync.md](docs/manga-anime-sync.md) | the list-driven manga pipeline, still being built |

@@ -152,7 +152,10 @@ $dataDirs = @(
     # exists and is writable inside the container, so it is created here. A
     # sibling of media/ and torrents/, so deleting into it is a move, not a copy.
     'recycle',
-    'media', 'media/movies', 'media/tv', 'media/anime', 'media/music', 'media/manga', 'media/comics', 'media/books'
+    'media', 'media/movies', 'media/tv', 'media/anime', 'media/music', 'media/manga', 'media/comics', 'media/books',
+    # Holds no real files: JellyBridge writes placeholder entries here for the
+    # Jellyfin discovery library. See docs/jellyfin-plugins.md.
+    'media/discover'
 )
 foreach ($d in $dataDirs) {
     $full = Join-Path $dataRootWin (Convert-ToWindowsPath $d)
