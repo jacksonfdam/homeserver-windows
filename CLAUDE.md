@@ -20,12 +20,14 @@ it looks redundant from a Unix shell.
 
 ```
 docker-compose.yml                   the whole stack, one file, Compose profiles
+docker/aio/Dockerfile                the manga downloader; upstream publishes no image
 .env.example                         paths, ports, TZ, dashboard vars
 scripts/_Common.ps1                  shared helpers, dot-sourced by everything else
 scripts/Setup-HomeServer.ps1         entry point: preflight -> folders -> .env -> up -> wiring
 scripts/Wire-Services.ps1            connects services to each other via REST APIs
 scripts/New-Dashboard.ps1            generates Homepage YAML config
-scripts/Import-MangaLists.ps1        MangaDex/MangaFire lists -> Komga/Kavita
+scripts/Import-MangaLists.ps1        MyAnimeList/MangaDex/MangaFire lists -> Komga/Kavita
+scripts/Get-MangaChapters.ps1        downloads manga into the library via the aio container
 scripts/Update-MangaBaka.ps1         mirrors the MangaBaka SQLite dump locally
 scripts/Get-HomeServerStatus.ps1     read-only report of what is configured and running
 scripts/Start-HomeServerConsole.ps1  interactive console: same state, plus acting on it
@@ -77,9 +79,18 @@ Cardigann definition is a different thing and is allowed: `prowlarr/definitions/
 holds third-party definitions Prowlarr's bundled catalogue does not carry, and
 Setup copies them into `Definitions/Custom/`. That puts an indexer in the *Add
 Indexer* list; adding and configuring it is still the user's move. Left out on
-purpose, not forgotten. Kaizoku (the manga downloader from the original repo) is
-out for the same reason — `missing.csv` from the list import is a backlog, not a
-download queue.
+purpose, not forgotten.
+
+**There is a manga downloader now, and there deliberately was not before.** The
+original repo's Kaizoku was left out on the same reasoning as the indexers, and
+`missing.csv` was described here as a backlog rather than a queue. That changed
+on request: `docker/aio/Dockerfile` builds AIO Webtoon Downloader and
+`Get-MangaChapters.ps1` drives it. What carried over from the old decision is
+the shape, not the refusal — it sits behind its own `manga` compose profile so
+nothing starts it unasked, it is a dry run until `-Apply`, and which sites the
+search reaches is AIO's business and the user's judgement. Do not re-remove it
+because this file used to say it was out; do not drop the profile or the dry run
+either.
 
 **FlareSolverr was a deliberate omission and no longer is.** It was added on
 request, behind its own `flaresolverr` compose profile, so nothing starts it
@@ -131,6 +142,22 @@ re-verify rather than guessing:
   `Add-Member -Force` throughout. Assigning directly worked for download clients
   and failed for every application, which left Prowlarr with no apps registered
   while reporting the rest of the wiring as fine.
+- **AIO's REST API does not download anything.** `api.py` serves
+  `/api/handlers`, `/api/info`, `/api/chapters`, `/api/chapter_images` and
+  `/api/download_image` — metadata and single images, no queue and no job
+  status. The design doc had this as an open question; the answer is that
+  acquisition is CLI-only, which is why the container has no port and is run
+  one command at a time rather than left running.
+- **AIO already writes ComicInfo.xml**, with `--metadata-source anilist` (or
+  `AIO_METADATA_SOURCE`), including `<AnilistId>` and `<MalId>`, and it caches
+  the matched ids so a re-run skips the fuzzy title match. The plan here
+  assumed it did not and that a script would have to. If AniList's API is
+  unreachable, that enrichment is what fails — not the download.
+- **AIO writes `<Title>_Ch_<a>-<b>.<fmt>` flat into `--output-dir`**, and
+  `--save-params` puts `download_params.json` in a `<Title>/` subfolder beside
+  it. Komga and Kavita treat a directory as a series, so pointing every series
+  at one output directory makes each *file* a series. `Get-MangaChapters.ps1`
+  passes `-o <library>/<series>` per title instead.
 - **qBittorrent** 4.6.1+ generates a random temporary WebUI password on first
   start and logs it. `admin`/`adminadmin` is no longer the default. The seed
   config relies on `WebUI\AuthSubnetWhitelist=172.16.0.0/12` (Docker bridge only)
