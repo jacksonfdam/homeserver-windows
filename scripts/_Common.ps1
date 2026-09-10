@@ -586,6 +586,39 @@ function ConvertFrom-MalProgress {
     return $out
 }
 
+# Merging a native command's stderr with 2>&1 turns each stderr line into a
+# NativeCommandError record, and $ErrorActionPreference = 'Stop' promotes that to
+# a terminating error. So capturing the output of any tool that logs progress to
+# stderr kills the script that ran it - and it does so on the exact path written
+# to handle that tool failing. `docker image inspect` on an image that does not
+# exist is the canonical case: the probe for a missing image is what dies when
+# the image is missing.
+#
+# Nothing here can be replaced with a plain try/catch: the preference has to be
+# lowered for the duration, and assigning the merged stream to a variable is what
+# keeps the stderr lines off the console.
+function Invoke-NativeCapture {
+    param(
+        [Parameter(Mandatory = $true)][string]$FilePath,
+        [Parameter(Mandatory = $true)][AllowEmptyCollection()][string[]]$Arguments
+    )
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    $raw = $null
+    $code = -1
+    try {
+        $raw = & $FilePath @Arguments 2>&1
+        $code = $LASTEXITCODE
+    }
+    finally { $ErrorActionPreference = $previous }
+
+    # Cast rather than pass through: half of these are ErrorRecords, and a caller
+    # matching on text should not have to know which half.
+    $lines = @()
+    foreach ($item in @($raw)) { $lines += [string]$item }
+    return [PSCustomObject]@{ exitCode = $code; output = $lines }
+}
+
 # Series titles become folder names, and both Komga and Kavita treat a folder as
 # a series - so this is the one place a bad character stops the whole thing from
 # appearing in the library. NTFS refuses \ / : * ? " < > | outright, and a name
