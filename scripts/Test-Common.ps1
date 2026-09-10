@@ -183,6 +183,28 @@ try {
         if ($s.present) { throw 'present should be false' }
     }
 
+    Test-Case 'ConvertTo-SafeFolderName strips what NTFS refuses' {
+        $r = ConvertTo-SafeFolderName -Name 'Is it Wrong to Try? Vol: 1/2 *'
+        if ($r -match '[\\/:*?"<>|]') { throw "got '$r'" }
+    }
+
+    # Accepted by the API and then unreachable by path, which is the worst
+    # possible outcome: the series appears, the files never open.
+    Test-Case 'ConvertTo-SafeFolderName drops a trailing dot' {
+        $r = ConvertTo-SafeFolderName -Name 'Dr. Stone.'
+        if ($r.EndsWith('.')) { throw "got '$r'" }
+    }
+
+    Test-Case 'ConvertTo-SafeFolderName caps the length' {
+        $r = ConvertTo-SafeFolderName -Name ('x' * 400)
+        if ($r.Length -gt 120) { throw "got $($r.Length) characters" }
+    }
+
+    Test-Case 'ConvertTo-SafeFolderName never returns nothing' {
+        if ((ConvertTo-SafeFolderName -Name '') -ne 'untitled') { throw 'empty name' }
+        if ((ConvertTo-SafeFolderName -Name '///') -ne 'untitled') { throw 'all-illegal name' }
+    }
+
     Test-Case 'ConvertFrom-MalProgress reads all three shapes' {
         $a = ConvertFrom-MalProgress -Token '12'
         if ($a.read -ne 12 -or $a.total -ne 0) { throw "bare: $($a.read)/$($a.total)" }
