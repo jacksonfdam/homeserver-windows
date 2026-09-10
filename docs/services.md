@@ -133,6 +133,52 @@ untried here, so treat Seerr as a fresh install.
 under `[misc]`, set `unwanted_extensions` to the same list and
 `action_on_unwanted_extensions = 2` so the whole download aborts.
 
+## Customising the dashboard
+
+`New-Dashboard.ps1` writes `settings.yaml` with the look already chosen:
+
+```yaml
+theme: dark
+color: violet
+headerStyle: boxed
+hideVersion: true
+```
+
+`theme` takes `dark` or `light`; `color` takes any Tailwind palette name
+(`slate`, `violet`, `emerald`, `sky`, … plus `white` and `black`);
+`headerStyle` takes `underlined`, `boxed`, `clean` or `boxedWidgets`.
+
+**Where you edit it decides whether it survives.** `settings.yaml` lives in
+`CONFIG_ROOT\homepage` and Homepage reloads it hot, so editing the file is the
+fast way to try a colour — no restart, no `docker compose`. But the file is a
+build product: the next `New-Dashboard.ps1` run backs it up as
+`.bak-<timestamp>` and writes the script's values again. For a change you want
+to keep, edit the `$settings` block in `New-Dashboard.ps1` and regenerate.
+
+Two things the script deliberately does not write, so they are yours and survive
+regeneration:
+
+- **`custom.css` and `custom.js`** in the same directory. Homepage loads both if
+  present. Be careful with CSS copied from posts and comments — the class names
+  are generated and change between Homepage releases, so a working snippet from
+  an older version fails silently against a newer one. Inspect the element in
+  the version you actually run.
+- **A wallpaper.** Add a `background:` block to the settings and drop the file in
+  `CONFIG_ROOT\homepage\images`, which Homepage serves as `/images`:
+
+  ```yaml
+  background:
+    image: /images/wall.jpg
+    blur: sm
+    brightness: 50
+  cardBlur: md
+  ```
+
+  An external URL works too, but the browser fetches it, not the server.
+
+The title is a parameter rather than a file edit:
+`.\scripts\New-Dashboard.ps1 -Title "Living Room"`.
+
 ## Order of setup
 
 1. `.\scripts\Setup-HomeServer.ps1` — brings everything up and wires the *arr
