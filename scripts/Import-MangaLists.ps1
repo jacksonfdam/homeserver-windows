@@ -25,10 +25,14 @@
 .EXAMPLE
     # MangaFire, from the JSON dumped by the browser snippet in docs/manga-lists.md
     .\Import-MangaLists.ps1 -Source MangaFire -Path .\mangafire.json -Target Komga -Apply
+
+.EXAMPLE
+    # MyAnimeList, from the official XML export or from a copy-pasted list page
+    .\Import-MangaLists.ps1 -Source MyAnimeList -Path .\lists\mal.txt -Status Reading -Target Komga
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)][ValidateSet('MangaDex', 'MangaFire')]
+    [Parameter(Mandatory = $true)][ValidateSet('MangaDex', 'MangaFire', 'MyAnimeList')]
     [string]$Source,
 
     # MangaDex
@@ -37,7 +41,15 @@ param(
     [string]$AccessToken,
 
     # MangaFire: a .json from the browser snippet, or a saved .html page
+    # MyAnimeList: the .xml (or .xml.gz) export, or a .txt of the pasted page
     [string]$Path,
+
+    # MyAnimeList only: keep just these list statuses. Everything by default,
+    # because which of them is worth acquiring is a decision, not a default -
+    # Planning is a wishlist and Paused is usually a much bigger backlog than
+    # Reading.
+    [ValidateSet('Reading', 'Completed', 'Paused', 'Dropped', 'Planning')]
+    [string[]]$Status,
 
     [ValidateSet('None', 'Komga', 'Kavita')]
     [string]$Target = 'None',
@@ -68,7 +80,12 @@ if (-not $KomgaUrl) { $KomgaUrl = "http://localhost:$(Get-EnvOrDefault -Conf $co
 if (-not $KavitaUrl) { $KavitaUrl = "http://localhost:$(Get-EnvOrDefault -Conf $conf -Key 'KAVITA_PORT' -Default '5001')" }
 if (-not $KomgaApiKey) { $KomgaApiKey = Get-EnvOrDefault -Conf $conf -Key 'KOMGA_API_KEY' -Default '' }
 if (-not $KavitaApiKey) { $KavitaApiKey = Get-EnvOrDefault -Conf $conf -Key 'KAVITA_API_KEY' -Default '' }
-if (-not $CollectionName) { $CollectionName = "$Source import" }
+if (-not $CollectionName) {
+    $CollectionName = "$Source import"
+    # A collection called "MyAnimeList import" is useless once you import twice
+    # with different statuses, so the filter names it.
+    if ($Status) { $CollectionName = "$Source $($Status -join ' + ')" }
+}
 
 # =============================================================== title handling
 
@@ -209,6 +226,8 @@ function Get-MangaDexEntries {
                 title     = $titles[0]
                 altTitles = ($titles | Select-Object -Skip 1) -join ' | '
                 url       = "https://mangadex.org/title/$($m.id)"
+                status    = ''
+                chaptersAvailable = 0
             }
         }
     }
@@ -232,6 +251,8 @@ function Get-MangaFireEntries {
                 title     = $_.title
                 altTitles = ''
                 url       = $_.url
+                status    = ''
+                chaptersAvailable = 0
             }
         }
     }
@@ -253,6 +274,84 @@ function Get-MangaFireEntries {
             title     = $title
             altTitles = ''
             url       = "https://mangafire.to/manga/$slug"
+            status    = ''
+            chaptersAvailable = 0
+        }
+    }
+    return $entries
+}
+
+# ================================================================ MyAnimeList
+
+# Two shapes, and the difference matters. The XML export carries
+# manga_mangadb_id, which is the MAL id MangaBaka cross-maps to AniList and
+# MangaUpdates - so it survives a retitling. A pasted page carries titles only,
+# and title matching is exactly the part of this script that is fuzzy. Prefer
+# the export; the paste exists because MAL's API needs a registered client id
+# and the export needs a working account page, and a copy always works.
+function Get-MyAnimeListEntries {
+    param([string]$File, [string[]]$Keep)
+
+    if (-not (Test-Path -LiteralPath $File)) { throw "File not found: $File" }
+    $name = [IO.Path]::GetFileName($File).ToLowerInvariant()
+
+    $records = @()
+    if ($name.EndsWith('.xml') -or $name.EndsWith('.xml.gz') -or $name.EndsWith('.gz')) {
+        # MAL hands out the export gzipped and does not always name it .gz.
+        $bytes = [IO.File]::ReadAllBytes($File)
+        $xmlText = ''
+        if ($bytes.Length -gt 2 -and $bytes[0] -eq 0x1f -and $bytes[1] -eq 0x8b) {
+            $inStream = New-Object IO.MemoryStream(, $bytes)
+            $gz = New-Object IO.Compression.GzipStream($inStream, [IO.Compression.CompressionMode]::Decompress)
+            $reader = New-Object IO.StreamReader($gz)
+            try { $xmlText = $reader.ReadToEnd() } finally { $reader.Dispose(); $gz.Dispose(); $inStream.Dispose() }
+        }
+        else {
+            $xmlText = [Text.Encoding]::UTF8.GetString($bytes)
+        }
+
+        $xml = [xml]$xmlText
+        foreach ($m in @($xml.myanimelist.manga)) {
+            if (-not $m) { continue }
+            $records += [PSCustomObject]@{
+                status            = ($m.my_status -replace 'On-Hold', 'Paused') -replace 'Plan to Read', 'Planning'
+                title             = [string]$m.manga_title
+                type              = ''
+                score             = [string]$m.my_score
+                chaptersRead      = 0
+                chaptersTotal     = 0
+                chaptersAvailable = 0
+                volumesRead       = 0
+                volumesTotal      = 0
+                malId             = [string]$m.manga_mangadb_id
+            }
+        }
+    }
+    else {
+        $text = Get-Content -LiteralPath $File -Raw -Encoding UTF8
+        foreach ($r in (ConvertFrom-MalListText -Text $text)) {
+            $records += ($r | Add-Member -NotePropertyName 'malId' -NotePropertyValue '' -PassThru -Force)
+        }
+    }
+
+    if ($Keep -and $Keep.Count -gt 0) {
+        $records = @($records | Where-Object { $Keep -contains $_.status })
+    }
+
+    $entries = @()
+    foreach ($r in $records) {
+        $url = ''
+        if ($r.malId) { $url = "https://myanimelist.net/manga/$($r.malId)" }
+        $entries += [PSCustomObject]@{
+            source    = 'MyAnimeList'
+            sourceId  = $r.malId
+            title     = $r.title
+            altTitles = ''
+            url       = $url
+            status    = $r.status
+            # Carried through because it is the only number here that says
+            # anything about acquisition: how many chapters exist to fetch.
+            chaptersAvailable = $r.chaptersAvailable
         }
     }
     return $entries
@@ -358,9 +457,16 @@ if ($Source -eq 'MangaDex') {
     if ($Follows -and -not $token) { $token = Get-MangaDexToken }
     $entries = Get-MangaDexEntries -Token $token -List $ListId
 }
-else {
+elseif ($Source -eq 'MangaFire') {
     if (-not $Path) { throw "Pass -Path to the .json from the browser snippet or a saved .html page" }
     $entries = Get-MangaFireEntries -File $Path
+}
+else {
+    if (-not $Path) { throw "Pass -Path to the MAL .xml export or a .txt of the pasted list page" }
+    $entries = Get-MyAnimeListEntries -File $Path -Keep $Status
+    if ($Status) { Write-Info "kept: $($Status -join ', ')" }
+    $byStatus = $entries | Group-Object status | Sort-Object Name
+    foreach ($g in $byStatus) { Write-Info ("{0,-10} {1}" -f $g.Name, $g.Count) }
 }
 
 if ($entries.Count -eq 0) { throw "Nothing was exported - check the list id / file" }
