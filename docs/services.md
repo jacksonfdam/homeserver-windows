@@ -157,6 +157,31 @@ same lineage.
 
 ---
 
+### Seerr — 5056
+
+`ghcr.io/seerr-team/seerr`, the successor to Overseerr and Jellyseerr. It is
+running **alongside** Jellyseerr rather than replacing it, deliberately and
+temporarily, so the two can be compared before one is dropped. They share a
+lineage, a config layout (`/app/config`) and a container port, which is why the
+host port here is 5056.
+
+Two ways it differs from everything else in this stack:
+
+- **No `PUID`/`PGID`.** Unlike the linuxserver images it runs as its own `node`
+  user at UID 1000 and wants the config directory owned by it. On a Docker
+  Desktop bind mount that ownership is largely ignored, so nothing here chowns
+  anything — but it is why the service definition looks different.
+- **Same manual first run.** Like Jellyseerr it wants a Jellyfin, Plex or Emby
+  login before it will accept Sonarr and Radarr, so the wizard cannot be skipped.
+
+Running both means two request front ends writing to the same Sonarr and Radarr.
+That duplicates requests and splits approvals, so this is a state to leave rather
+than settle into: pick one, then delete the other's service block and config
+directory.
+
+Migrating an existing Jellyseerr config is documented upstream but has not been
+tried here, so treat Seerr as a fresh install until proven otherwise.
+
 ## Automation
 
 All three share the same shape: Settings → Download Clients, Media Management,
@@ -256,6 +281,7 @@ bot protection, is not included.
 | --- | --- | --- |
 | 3000 | Homepage | dashboard, start here |
 | 5055 | Jellyseerr | requests |
+| 5056 | Seerr | requests, the successor - running alongside for now |
 | 5001 | Kavita | container listens on 5000 |
 | 6767 | Bazarr | subtitles |
 | 6881 | qBittorrent | torrent traffic, TCP + UDP |

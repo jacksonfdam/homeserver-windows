@@ -292,6 +292,11 @@ $services = @"
         href: http://${hostIp}:$(Get-EnvOrDefault -Conf $conf -Key 'JELLYSEERR_PORT' -Default '5055')
         description: Request something new
 
+    - Seerr:
+        icon: overseerr.png
+        href: http://${hostIp}:$(Get-EnvOrDefault -Conf $conf -Key 'SEERR_PORT' -Default '5056')
+        description: The successor - running alongside to compare
+
 - Automation:
     - Sonarr:
         icon: sonarr.png

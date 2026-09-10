@@ -232,6 +232,7 @@ function Get-ServiceMap {
         @{ name = 'Bazarr';      container = 'bazarr';      port = (Get-EnvOrDefault -Conf $Conf -Key 'BAZARR_PORT' -Default '6767'); arr = $false }
         @{ name = 'Jellyfin';    container = 'jellyfin';    port = (Get-EnvOrDefault -Conf $Conf -Key 'JELLYFIN_PORT' -Default '8096'); arr = $false }
         @{ name = 'Jellyseerr';  container = 'jellyseerr';  port = (Get-EnvOrDefault -Conf $Conf -Key 'JELLYSEERR_PORT' -Default '5055'); arr = $false }
+        @{ name = 'Seerr';       container = 'seerr';       port = (Get-EnvOrDefault -Conf $Conf -Key 'SEERR_PORT' -Default '5056'); arr = $false }
         @{ name = 'Komga';       container = 'komga';       port = (Get-EnvOrDefault -Conf $Conf -Key 'KOMGA_PORT' -Default '25600'); arr = $false }
         @{ name = 'Kavita';      container = 'kavita';      port = (Get-EnvOrDefault -Conf $Conf -Key 'KAVITA_PORT' -Default '5001'); arr = $false }
         @{ name = 'Homepage';    container = 'homepage';    port = (Get-EnvOrDefault -Conf $Conf -Key 'HOMEPAGE_PORT' -Default '3000'); arr = $false }
