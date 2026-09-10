@@ -70,6 +70,14 @@ survive *arr version bumps. Do not replace it with a literal JSON body.
 checks throw). Windows PowerShell 5.1 is what ships on the box; PS7 is not
 assumed.
 
+**Do not pipe a `docker compose build` through `Out-Host`.** BuildKit's default
+progress writer wants a real console handle and fails the moment stdout is a
+pipe — on Windows, `failed to get console: Identificador inválido` and exit 1,
+*before the build starts*. `Invoke-Compose` pipes, so a build calls docker
+directly with the output left on the console, plus `--progress plain` for the
+case where something redirects it anyway. `--progress` is a global compose flag
+and has to precede the subcommand; `docker compose build` does not accept it.
+
 **Never merge a native command's stderr with `2>&1` directly.** Each stderr line
 becomes a `NativeCommandError` record, and `$ErrorActionPreference = 'Stop'` —
 which every script here sets — promotes that to a terminating error. So reading
