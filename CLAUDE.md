@@ -32,7 +32,11 @@ scripts/Start-HomeServerConsole.ps1  interactive console: same state, plus actin
 scripts/Clear-StalledQueue.ps1       removes dead downloads, meant as a Scheduled Task
 scripts/Test-Common.ps1              parses every script, smoke-tests the pure helpers
 docs/services.md                     per-service reference: ports, access, integration
+docs/windows.md                      what Docker Desktop for Windows changes, and the gotchas
 docs/tuning.md                       automated vs manual vs deliberately-not-done settings
+docs/guide-parity.md                 the two source guides walked step by step, deviations marked
+docs/day-2.md                        console, maintenance, scheduled tasks, backup
+docs/jellyfin-plugins.md             optional Jellyfin plugins, JellyBridge, theming
 docs/manga-lists.md                  the list import flow
 ```
 
@@ -68,11 +72,23 @@ assumed.
 providers are detected by name and skipped; the Komga collection merges rather
 than duplicating; config files are backed up before being rewritten.
 
-**Two deliberate omissions.** FlareSolverr is not in the stack (its purpose is
-defeating bot protection) and no indexers are preconfigured in Prowlarr. Both
-were left out on purpose, not forgotten. Kaizoku (the manga downloader from the
-original repo) is out for the same reason — `missing.csv` from the list import is
-a backlog, not a download queue.
+**No indexers are preconfigured in Prowlarr**, and none will be. Shipping a
+Cardigann definition is a different thing and is allowed: `prowlarr/definitions/`
+holds third-party definitions Prowlarr's bundled catalogue does not carry, and
+Setup copies them into `Definitions/Custom/`. That puts an indexer in the *Add
+Indexer* list; adding and configuring it is still the user's move. Left out on
+purpose, not forgotten. Kaizoku (the manga downloader from the original repo) is
+out for the same reason — `missing.csv` from the list import is a backlog, not a
+download queue.
+
+**FlareSolverr was a deliberate omission and no longer is.** It was added on
+request, behind its own `flaresolverr` compose profile, so nothing starts it
+unless asked. `Wire-Services.ps1` registers it in Prowlarr as an indexer proxy
+only when the container answers, and creates the `flaresolverr` tag it needs —
+Prowlarr routes an indexer through a proxy only when the two share a tag.
+Tagging indexers stays manual, and should: a tagged indexer launches a real
+browser per request. If you see it described as absent anywhere, that text is
+stale.
 
 ## API facts verified against source, not memory
 

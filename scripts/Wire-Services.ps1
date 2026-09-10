@@ -13,15 +13,17 @@
       3. creates the root folders inside /data/media
       4. registers Sonarr / Radarr / Lidarr as applications in Prowlarr, plus
          qBittorrent, so Prowlarr is the single place that manages indexers
-      5. points Bazarr at Sonarr and Radarr, turns on automatic subtitle sync
+      5. registers FlareSolverr as a Prowlarr indexer proxy, but only if its
+         container is up - it is behind its own compose profile
+      6. points Bazarr at Sonarr and Radarr, turns on automatic subtitle sync
          and upgrades, and with -SubtitleLanguage creates the language profile
          Bazarr needs before it will fetch anything at all
-      6. optionally applies minimum file sizes per quality, plus custom formats
+      7. optionally applies minimum file sizes per quality, plus custom formats
          scored into the floor for release shapes never worth downloading:
          executable payloads, whole-disc rips and stereoscopic 3D. Sonarr gets
          a release profile for the first, Radarr gets all three
          (-ApplyQualityFloors)
-      7. optionally sets file and folder naming, stops PROPER releases from
+      8. optionally sets file and folder naming, stops PROPER releases from
          jumping the scoring, and points both apps at a recycle bin
          (-ApplyNaming)
 
@@ -191,6 +193,43 @@ try {
 }
 catch {
     Write-Fail "Prowlarr -> qBittorrent: $($_.Exception.Message)"
+}
+
+# ------------------------------------------------------ Prowlarr indexer proxy
+# FlareSolverr is behind its own compose profile, so this runs only when the
+# container is actually answering. Registering a proxy that points at nothing
+# is worse than not having one: every tagged indexer then fails instead of
+# merely being unprotected.
+$flareUrl = "http://localhost:$(Get-EnvOrDefault -Conf $conf -Key 'FLARESOLVERR_PORT' -Default '8191')"
+if (Test-HttpOk -Url $flareUrl) {
+    Write-Step "FlareSolverr as a Prowlarr indexer proxy"
+    try {
+        # Prowlarr applies a proxy only to indexers carrying its tag, so the tag
+        # has to exist before the proxy that references it. Which indexers get
+        # tagged stays manual, and should: a proxy on an indexer that does not
+        # need one turns a HTTP call into a browser launch.
+        $tagLabel = 'flaresolverr'
+        $tags = Invoke-ArrApi -BaseUrl $hostUrl.prowlarr -ApiKey $apiKey.prowlarr -Path '/api/v1/tag'
+        $tag = $null
+        foreach ($t in @($tags)) { if ($t -and $t.label -eq $tagLabel) { $tag = $t } }
+        if ($tag -eq $null) {
+            $tag = Invoke-ArrApi -BaseUrl $hostUrl.prowlarr -ApiKey $apiKey.prowlarr `
+                -Path '/api/v1/tag' -Method POST -Body @{ label = $tagLabel }
+            Write-Ok "tag '$tagLabel' created"
+        }
+
+        # The container name, not localhost: Prowlarr calls this itself.
+        $null = New-ProviderFromSchema -BaseUrl $hostUrl.prowlarr -ApiKey $apiKey.prowlarr `
+            -SchemaPath '/api/v1/indexerproxy/schema' -CreatePath '/api/v1/indexerproxy' `
+            -Implementation 'FlareSolverr' -Name 'FlareSolverr' `
+            -Fields @{ 'host' = 'http://flaresolverr:8191/' } `
+            -TopLevel @{ tags = @($tag.id) }
+
+        Write-Info "tag an indexer '$tagLabel' for it to go through the proxy"
+    }
+    catch {
+        Write-Fail "Prowlarr -> FlareSolverr: $($_.Exception.Message)"
+    }
 }
 
 # ---------------------------------------------------------------------- Bazarr

@@ -20,7 +20,7 @@
 .PARAMETER Root
     Where the mirror lives. Defaults to MANGABAKA_ROOT in .env, and failing that
     to <CACHE_ROOT>/mangabaka - regenerable data, so deliberately not under
-    CONFIG_ROOT, which is what the backup instructions in README.md cover.
+    CONFIG_ROOT, which is what the backup instructions in docs/day-2.md cover.
 
 .PARAMETER Force
     Download and replace even when the checksum says the local copy is current.

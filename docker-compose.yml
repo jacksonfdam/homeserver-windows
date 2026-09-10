@@ -11,6 +11,7 @@
 #   plex       -> Plex Media Server instead of / alongside Jellyfin
 #   usenet     -> SABnzbd
 #   utils      -> Portainer, Watchtower
+#   flaresolverr -> FlareSolverr, as a Prowlarr indexer proxy
 
 name: homeserver
 
@@ -61,6 +62,25 @@ services:
       - "${SABNZBD_PORT:-8085}:8080"
 
   # ------------------------------------------------------------------ indexers
+  # Cloudflare challenge solver, reached by Prowlarr as an indexer proxy. Opt-in
+  # because it is the heaviest thing in the stack: every request it handles
+  # launches a real browser, so a tagged indexer costs seconds and hundreds of
+  # MB where an untagged one costs a HTTP call.
+  #
+  # Not a LinuxServer image, so *common-env does not apply - it takes no
+  # PUID/PGID/UMASK and keeps no state, which is why it has no /config volume.
+  flaresolverr:
+    <<: *restart
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: flaresolverr
+    profiles: [flaresolverr]
+    networks: [homeserver]
+    environment:
+      TZ: ${TZ:-Europe/Stockholm}
+      LOG_LEVEL: ${FLARESOLVERR_LOG_LEVEL:-info}
+    ports:
+      - "${FLARESOLVERR_PORT:-8191}:8191"
+
   prowlarr:
     <<: *restart
     image: lscr.io/linuxserver/prowlarr:latest

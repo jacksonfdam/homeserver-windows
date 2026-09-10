@@ -1,279 +1,138 @@
 # Tuning reference
 
-What this stack sets for you, what it leaves for you to set, and what it will not
-set on purpose. Scope is the four things this server exists for: **anime,
-movies, music and manga.**
+What this stack sets for you, what it leaves to you, and what it will not set on
+purpose. Scope is the four things this server exists for: **anime, movies, music
+and manga.**
 
-Settings collected from two r/pirataria guides — the automated home streaming
-guide and the follow-up on automatic Brazilian Portuguese dubbing — plus the
-[TRaSH Guides](https://trash-guides.info/) they draw their custom formats from,
-checked against what `Wire-Services.ps1` actually does today.
+Settings come from two r/pirataria guides and the
+[TRaSH Guides](https://trash-guides.info/) behind them, checked against what
+`Wire-Services.ps1` actually does. To read them in the guides' own order, with
+each step marked follow / skip / do differently, see
+[guide-parity.md](guide-parity.md).
 
-Three states are used throughout:
+## What the switches do
 
-- **automated** — `Wire-Services.ps1` does it, and re-running is safe
-- **manual** — you have to do it in the app, and why it was left that way
-- **not done** — nobody has built it yet, with the issue tracking it
+`Wire-Services.ps1` runs at the end of setup and is idempotent. Without a switch
+it wires services together and nothing else.
 
----
+| | Sets |
+| --- | --- |
+| *(always)* | qBittorrent as download client in Sonarr, Radarr and Lidarr, one category each so the queues never mix; root folders under `/data/media`; the three apps registered in Prowlarr with `fullSync`; Bazarr pointed at Sonarr and Radarr |
+| `-ApplyQualityFloors` | a minimum size per quality definition; custom formats rejecting executable payloads, BR-DISK and 3D, scored `-10000` into every quality profile |
+| `-ApplyNaming` | file and folder naming, propers *do not prefer*, and a recycle bin at `/data/recycle` kept 14 days |
+| `-SubtitleLanguage pb` | a Bazarr language profile, set as the default for series and movies, plus subtitle sync and upgrades |
 
-## Everything
+`-ApplyNaming` is off by default because it enables renaming on import: on a
+fresh install that is the point, on an existing library it renames everything on
+the next refresh.
 
-### Prowlarr is the only place indexers live — automated
+## Why those, and not others
 
-Sonarr, Radarr and Lidarr are registered in Prowlarr with `fullSync`, so
-indexers added there are pushed out. Adding an indexer directly inside an *arr
-app means it is not tracked, not removed when it dies, and is the usual source
-of bad releases.
+**Quality floors, because every definition ships at zero.** A minimum size of
+zero lets a 600 MB file pass as 2160p. The floors are in MB per minute of
+runtime.
 
-**Which indexers to enable is not automated and will not be.** The guide's own
-approach is to filter by public plus the categories you care about and add what
-looks useful.
+**The executable filter, because it is the most useful setting in the stack.** A
+"complete" torrent whose only payload is a renamed executable never reaches
+disk: qBittorrent refuses to write those extensions at all, and the *arr apps
+reject the release and blocklist it. Sonarr gets a release profile, Radarr a
+custom format — it has no release-profile endpoint. This one is not from the
+guides; it comes from the article this port is based on.
 
-### Release selection order
+**Rejecting BR-DISK and 3D by score, not by rule.** Both are release-title
+matches in the same table as the executable filter, so adding another shape to
+reject is a row rather than another block of code. The idea comes from the TRaSH
+Guides; the patterns are this repository's own, and Radarr compiles them at
+creation, so a bad one fails loudly instead of matching nothing.
 
-Worth knowing before tuning anything, because it explains why a custom format
-score sometimes loses. Radarr and Sonarr pick in this order:
-
-1. quality
-2. custom format score
-3. protocol
-4. indexer priority
-5. indexer flags
-6. seeds and peers
-7. size
-
-Quality wins first. A custom format cannot rescue a release the quality profile
-already rejected, and cannot beat a higher quality unless the score is negative
-enough to push the release below the profile's minimum.
-
-### Quality floors — automated with `-ApplyQualityFloors`
-
-Every quality definition ships with a minimum size of zero, which lets a 600 MB
-file pass as 2160p. `-ApplyQualityFloors` sets a floor per definition in MB per
-minute of runtime.
-
-### Executable payload filter — automated with `-ApplyQualityFloors`
-
-A release advertising `.exe`, `.scr`, `.bat` and friends is rejected: a release
-profile in Sonarr, and a custom format scored `-10000` in Radarr. qBittorrent
-also refuses to write those files at all, seeded into its config before first
-start.
-
-This one is not from the guides. It comes from the original article this port is
-based on, and it is the single most useful setting in the stack.
-
-### File and folder naming — automated with `-ApplyNaming`
-
-Naming matters because the player reads the filename to catalogue the item, so
-getting it wrong means fixing metadata by hand forever.
-
-What is set:
-
-- movie and series folders carry the IMDb id, so the player matches on the id
-  rather than guessing from the title
-- rename on import is enabled, illegal characters are replaced, and the colon
-  replacement is set to delete
-- the file name carries quality, dynamic range, audio codec, audio channels,
-  video codec and the release group
-- **the anime format additionally carries absolute episode numbering and the
-  audio languages**, which is what makes an anime library sort correctly
-
-The anime case is the one that actually breaks without it. Rendered by a live
-Sonarr from the format that ships:
+**Naming, because the player reads the filename.** Folders carry the IMDb id so
+the player matches on the id rather than guessing from the title. The anime
+format additionally carries absolute episode numbering and audio languages,
+which is the case that actually breaks without it — rendered by a live Sonarr:
 
 ```
 The Series Title's! (2010) - S01E01 - 001 - Episode Title 1 [WEBDL-1080p v2][10bit][AVC][DTS 5.1][JA]-RlsGrp
 ```
 
-It is behind its own switch, and off by default, because it enables renaming on
-import: on a fresh install that is the point, on an existing library it renames
-everything on the next refresh.
+**A recycle bin, because torrents carry junk.** Both apps import the media and
+send the rest to `/data/recycle`, a sibling of `media/` and `torrents/` so
+deleting into it is a move.
 
-One field-level trap, in case this ever needs editing:
-`colonReplacementFormat` is an integer in Sonarr and a string in Radarr.
+**A Bazarr language profile, because Bazarr ignores items without one.**
+Silently. Before this existed the integration fetched nothing while appearing
+correctly configured.
 
-### Propers and repacks — automated with `-ApplyNaming`
+### Release selection order
 
-Set to *do not prefer*, so a PROPER does not jump ahead of the scoring set up
-deliberately.
+Worth knowing before tuning anything, because it explains why a custom format
+score sometimes loses. Radarr and Sonarr pick in this order: **quality**, custom
+format score, protocol, indexer priority, indexer flags, seeds and peers, size.
 
-### Recycle bin — automated with `-ApplyNaming`
+Quality wins first. A custom format cannot rescue a release the quality profile
+already rejected, and cannot beat a higher quality unless its score is negative
+enough to push the release below the profile's minimum.
 
-Torrents often carry extra files. Both apps now import the media and send the
-rest to `/data/recycle`, cleaned out after 14 days. Without it that junk
-accumulates in the library.
+## Traps, all found by running it
 
-The folder is created by `Setup-HomeServer.ps1` because it has to be: both apps
-validate the path for existence and write access inside the container and reject
-the whole settings object otherwise. It sits beside `media/` and `torrents/` so
-deleting into it is a move rather than a copy.
+- **`colonReplacementFormat` is an integer in Sonarr and a string in Radarr.**
+- **The recycle bin path is validated inside the container** for existence and
+  write access, and the whole settings object is rejected otherwise — which is
+  why `Setup-HomeServer.ps1` creates the folder.
+- **Bazarr booleans must be lower case.** `True` is refused with 406 *and the
+  whole form is discarded with it*, which is how this wiring did nothing at all
+  for a long time while reporting success.
+- **A Bazarr `204` proves only that the request was accepted.** Field names
+  missing the `settings-` prefix are accepted too, write the wrong type into the
+  config, and kill Bazarr on its next read. Values are read back, not trusted.
+- **Changing `use_sonarr` restarts Bazarr**, so the connection drops before the
+  reply arrives even though the write landed. Connection settings go last.
 
----
+Provider registration is schema-driven for the same reason: `New-ProviderFromSchema`
+fetches the app's own `/schema` and overrides only the fields it cares about,
+instead of hardcoding a field list that the next *arr release invalidates.
 
-## Anime and movies
+## Left to you, and why
 
-### Download client — automated
+- **Which indexers to enable.** Prowlarr is the only place indexers live —
+  registered with `fullSync`, so what you add there is pushed out. An indexer
+  added inside an *arr app is not tracked, not removed when it dies, and is the
+  usual source of bad releases. Which ones you enable is yours to decide.
+- **Which indexers go through FlareSolverr.** With the `flaresolverr` profile
+  running, the proxy and its tag are registered for you, but no indexer carries
+  the tag. Add it only where a search actually fails a Cloudflare check: a
+  proxied request launches a real browser.
+- **Series type Anime**, per series in Sonarr. It switches numbering from
+  season/episode to absolute, which is how anime releases are named. There is no
+  global setting.
+- **A subtitle provider account**, and **applying the language profile in bulk**
+  to what is already in the library — a default applies to items added after it
+  is set, never retrospectively.
+- **Komga and Kavita libraries.** Both mount `/data/media/manga`, `/comics` and
+  `/books`; their first-run wizards are interactive by design.
+- **Hardlinks**: leave "use hardlinks instead of copy" on. It falls back to
+  copying, so it costs nothing and pays off if `DATA_ROOT` ever moves into the
+  WSL2 filesystem. `Setup-HomeServer.ps1` probes whether it actually works.
+- **Disk pre-allocation** is on in the seeded config, so a download cannot start
+  and then run out of space unattended. Only a fresh install gets it —
+  `qBittorrent.conf` is written when absent and never touched again.
 
-qBittorrent is registered in Sonarr, Radarr and Lidarr with one category each
-(`tv-sonarr`, `radarr`, `lidarr`) so the queues never mix, and with completed
-and failed downloads removed from the client's history after import.
+## Not done
 
-### Root folders — automated
+- **Brazilian Portuguese dubbing.** Three of its four pieces are ordinary custom
+  formats that would automate cleanly. The fourth is an indexer: the Torrentio
+  definition now ships in `prowlarr/definitions/` and Setup installs it, but
+  adding and configuring the indexer is still yours, and the other three score
+  nothing until you do. The recipe is in [guide-parity.md](guide-parity.md).
+- **Music playback.** Lidarr fills `/data/media/music` and nothing in the stack
+  presents it. Jellyfin can serve the same path but is not configured to. The one
+  content type where the pipeline stops.
+- **Manga acquisition.** Being built — see
+  [manga-anime-sync.md](manga-anime-sync.md). Only the MangaBaka mirror exists so
+  far. `Import-MangaLists.ps1` is a different thing: it reports what is missing
+  from Komga or Kavita and acquires nothing ([manga-lists.md](manga-lists.md)).
 
-`/data/media/tv`, `/data/media/anime`, `/data/media/movies`, `/data/media/music`.
-
-### Series type for anime — manual
-
-Sonarr needs the series type set to **Anime** on each series, which switches
-episode numbering from season/episode to absolute. Anime releases are named with
-absolute numbering, so without this the matching fails. It is per-series and
-cannot be set once globally.
-
-### Disk pre-allocation — on, in the seeded config
-
-Pre-allocation is on, so a download cannot start and then run out of space
-unattended. It costs a slower start and more SSD writes.
-
-The argument is stronger here than in the guide's original Linux setting:
-hardlinks usually fail on an NTFS bind mount, so every import is a full copy and
-the peak space needed is roughly double the file.
-
-**This only affects a fresh install.** `Setup-HomeServer.ps1` writes
-`qBittorrent.conf` when the file is absent and never touches it again, so an
-existing install keeps whatever it has. Change it under
-Preferences > Downloads, or delete the file and re-run Setup to have it
-rewritten.
-
-### Hardlinks instead of copy — leave enabled
-
-The guides enable "use hardlinks instead of copy". Leave it on even though it
-will probably not work: the setting falls back to copying, so enabling it costs
-nothing and pays off if `DATA_ROOT` ever moves into the WSL2 filesystem.
-`Setup-HomeServer.ps1` probes whether hardlinks actually work and tells you.
-
-### Unwanted release formats — automated with `-ApplyQualityFloors`
-
-Two more custom formats in Radarr, both scored `-10000` and so under the default
-minimum of `0`, which refuses the release:
-
-- **BR-DISK** — whole-disc rips. Enormous, and most players will not play them.
-- **3D** — side-by-side and over-under, which look broken on a flat screen.
-
-Both are release-title matches, the same mechanism as the executable filter, and
-they live in the same table — adding another shape to reject is a row rather
-than another block of code.
-
-The idea of scoring unwanted release shapes into the floor comes from the TRaSH
-Guides. The patterns are this repository's own, and Radarr compiles them when
-the format is created, so a bad one fails loudly instead of matching nothing.
-
-### Brazilian Portuguese dubbing — not done, and needs a decision first
-
-The second guide builds this out of four pieces:
-
-1. a custom Cardigann indexer definition dropped into Prowlarr's
-   `Definitions/Custom/`, which is what surfaces releases from Brazilian sites,
-   with its indexer priority raised to the top
-2. a custom format rejecting audio that is neither original nor Portuguese,
-   scored `-10000`
-3. a custom format preferring Portuguese audio, scored `+10`
-4. a custom format matching dubbing markers in the release title, scored `+10`
-
-and then raises the profile's *upgrade until custom format score* so the
-preference actually takes effect.
-
-Pieces 2 to 4 are ordinary custom formats and would automate cleanly. **Piece 1
-is an indexer**, and this stack does not configure indexers on purpose. Without
-it the other three have nothing to score, so the whole chain is a documented
-exception or it is nothing.
-
-### Subtitles — automated with `-SubtitleLanguage`
-
-Bazarr is pointed at Sonarr and Radarr, and with `-SubtitleLanguage pb` it also
-gets a language profile, that profile as the default for series and movies,
-automatic subtitle synchronisation, and subtitle upgrades.
-
-The profile is not a nicety. **Bazarr silently ignores any item that has no
-language profile**, so before this existed the integration fetched nothing while
-appearing to be configured.
-
-Two things are still yours:
-
-- **a provider account.** Nothing can be downloaded without one.
-- **assigning the profile in bulk to what is already in the library.** A default
-  applies to items added after it is set, not retrospectively.
-
-Three traps in that endpoint are worth knowing before editing this, all found by
-running it rather than reading about it:
-
-- booleans must be lower case; `True` is refused with 406 **and the whole form is
-  discarded with it**, which is how this wiring managed to do nothing at all for
-  a long time while reporting success
-- a `204` proves only that the request was accepted — field names without the
-  `settings-` prefix are accepted too, write the wrong type into the config, and
-  kill Bazarr on its next read
-- changing `use_sonarr` restarts Bazarr, so the connection drops before the reply
-  arrives even though the write landed
-
----
-
-## Music
-
-### Acquisition — automated
-
-Lidarr is wired to qBittorrent and Prowlarr with the `lidarr` category and
-`/data/media/music` as its root folder.
-
-### Playback — nothing serves it
-
-Lidarr fills `/data/media/music` and no service in the stack presents it. Jellyfin
-can serve music from the same path, but it is not configured to, and it is not
-what a dedicated music server does.
-
-This is the one gap in the four content types where the pipeline simply stops.
-Tracked as an issue.
-
----
-
-## Manga
-
-### Libraries — manual
-
-Komga and Kavita both mount `/data/media/manga`, `/data/media/comics` and
-`/data/media/books`. Their first-run wizards create the admin account and point
-the libraries at those paths, and neither can be automated: account creation is
-interactive by design.
-
-Two readers are included on purpose. They overlap almost entirely — run both
-against the same folders for a week and keep the one you prefer.
-
-### Acquisition — being built
-
-See `manga-anime-sync.md`. Lists come from AniList and MyAnimeList, identity is
-resolved through a local MangaBaka mirror, and acquisition goes through AIO
-Webtoon Downloader.
-
-The mirror is the only part that exists: `Update-MangaBaka.ps1` downloads the
-nightly dump, verifies it against the published SHA1 and indexes it. Everything
-after that — reading the lists, resolving them, and fetching anything — is still
-to build.
-
-### List import — automated, different thing
-
-`Import-MangaLists.ps1` matches a MangaDex or MangaFire list against what is
-already in Komga or Kavita and reports what is missing. It acquires nothing.
-
----
-
-## What the list-driven pipelines have in common
-
-The movie guide drives Radarr from a Letterboxd list: the list becomes a feed,
-Radarr polls it, adds what appears and can delete what is removed.
-
-That is structurally the same thing being built for manga from AniList and
-MyAnimeList, and the same thing the anime bridge will do into Sonarr. Same shape
-each time: an external list is the source of truth, the *arr app or the sync
-script is the executor, and removal policy is a deliberate choice rather than a
-default — deleting files when something leaves a list is useful on a small disk
-and alarming on a large one.
+Those last two share a shape with the Letterboxd list the movie guide uses, and
+it is worth naming: an external list is the source of truth, the *arr app or the
+sync script is the executor, and **removal policy is a decision, not a default** —
+deleting files when something leaves a list is useful on a small disk and
+alarming on a large one.
