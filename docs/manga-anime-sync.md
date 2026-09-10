@@ -65,8 +65,15 @@ a queue — a change of purpose rather than a new subsystem.
 
 1. **MangaBaka mirror** — done. `Update-MangaBaka.ps1` downloads the dump,
    verifies the published SHA1 and indexes it.
-2. **List readers.** AniList over GraphQL, MyAnimeList over API v2. Both need an
-   application registration; MAL's is the more awkward.
+2. **List readers.** Partly done, and not the way this planned it. Both APIs
+   turned out to be blocked rather than awkward: AniList's is switched off by
+   its own maintainers, and MAL's API v2 needs a registered client id. So the
+   first reader takes the list as text — `-Source MyAnimeList` in
+   `Import-MangaLists.ps1` reads either the official gzipped XML export or a
+   copy-pasted list page ([manga-lists.md](manga-lists.md)). The export carries
+   `manga_mangadb_id`, which is the id step 3 needs; the paste carries titles
+   only. The GraphQL and API v2 readers are still worth having when they become
+   reachable, because a paste is a snapshot and an API is a sync.
 3. **Resolution.** List entry → MangaBaka row → the identity used downstream.
    This is what makes the same series on both lists one item instead of two.
 4. **Acquisition.** Hand the resolved series to AIO, preferring REST over
