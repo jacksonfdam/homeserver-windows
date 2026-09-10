@@ -92,15 +92,16 @@ if (-not (Test-Path -LiteralPath $outDir)) { New-Item -ItemType Directory -Path 
 
 # ------------------------------------------------------------------ the container
 
-# Compose builds this on first use, which takes several minutes and lands about
-# 2 GB - Chromium and its shared libraries are most of it. Saying so up front is
-# better than a silent ten-minute pause.
-$imageBuilt = $true
-& docker image inspect 'homeserver/aio:latest' 2>&1 | Out-Null
-if ($LASTEXITCODE -ne 0) { $imageBuilt = $false }
-if (-not $imageBuilt) {
-    Write-Warn "the aio image is not built yet - the first run builds it (several minutes, ~2 GB)"
-    Write-Info "to do it separately: docker compose --profile manga build aio"
+# Built here rather than left to `compose run`, which would build it silently
+# inside the first search and then again for every title after a failure. It
+# takes several minutes and lands about 2 GB - Chromium and its shared libraries
+# are most of it - so it gets its own step and says so before starting.
+$probe = Invoke-NativeCapture -FilePath 'docker' -Arguments @('image', 'inspect', 'homeserver/aio:latest')
+if ($probe.exitCode -ne 0) {
+    Write-Warn "the aio image is not built yet: building it now (several minutes, ~2 GB)"
+    $build = Invoke-Compose -Profiles @('manga') -Arguments @('build', 'aio')
+    if ($build -ne 0) { throw "docker compose build aio failed with exit code $build" }
+    Write-Ok "image built"
 }
 
 function Invoke-Aio {
@@ -108,21 +109,24 @@ function Invoke-Aio {
         [Parameter(Mandatory = $true)][string[]]$AioArguments,
         [switch]$Capture
     )
+    $runArgs = @('run', '--rm')
+    # -T only when the output is being read. Without it compose allocates a
+    # pseudo-TTY and the control characters land in the string being parsed;
+    # with it, the download path loses its progress rendering.
+    if ($Capture) { $runArgs += '-T' }
+
     $composeArgs = @(
         'compose', '--project-directory', $repoRoot,
         '-f', (Join-Path $repoRoot 'docker-compose.yml'),
-        '--profile', 'manga', 'run', '--rm', 'aio'
-    ) + $AioArguments
+        '--profile', 'manga'
+    ) + $runArgs + @('aio') + $AioArguments
 
     Write-Info ("docker " + ($composeArgs -join ' '))
 
-    if ($Capture) {
-        # 2>&1 because AIO logs progress to stderr and prints the JSON to
-        # stdout, and PowerShell 5.1 will turn a stderr line into an error
-        # record otherwise.
-        $out = & docker @composeArgs 2>&1
-        return [PSCustomObject]@{ exitCode = $LASTEXITCODE; output = @($out) }
-    }
+    # AIO logs progress to stderr and prints its JSON to stdout, so reading the
+    # output means merging the two - which is a terminating error under
+    # $ErrorActionPreference = 'Stop' unless it goes through Invoke-NativeCapture.
+    if ($Capture) { return Invoke-NativeCapture -FilePath 'docker' -Arguments $composeArgs }
 
     & docker @composeArgs | Out-Host
     return [PSCustomObject]@{ exitCode = $LASTEXITCODE; output = @() }
