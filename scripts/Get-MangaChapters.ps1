@@ -99,8 +99,32 @@ if (-not (Test-Path -LiteralPath $outDir)) { New-Item -ItemType Directory -Path 
 $probe = Invoke-NativeCapture -FilePath 'docker' -Arguments @('image', 'inspect', 'homeserver/aio:latest')
 if ($probe.exitCode -ne 0) {
     Write-Warn "the aio image is not built yet: building it now (several minutes, ~2 GB)"
-    $build = Invoke-Compose -Profiles @('manga') -Arguments @('build', 'aio')
-    if ($build -ne 0) { throw "docker compose build aio failed with exit code $build" }
+
+    # Not Invoke-Compose, which pipes through Out-Host. BuildKit's default
+    # progress writer wants a real console handle and gives up the moment
+    # stdout is a pipe - on Windows that is "failed to get console:
+    # Identificador invalido" and exit 1, before the build starts. So the
+    # output is left attached to the console, and --progress plain covers the
+    # case where it is redirected anyway. It is a global compose flag, not a
+    # build one, so it goes before the subcommand.
+    $buildArgs = @(
+        'compose', '--project-directory', $repoRoot,
+        '-f', (Join-Path $repoRoot 'docker-compose.yml'),
+        '--progress', 'plain',
+        '--profile', 'manga', 'build', 'aio'
+    )
+    Write-Info ("docker " + ($buildArgs -join ' '))
+
+    # A build logs to stderr by design, and 'Stop' plus a native command's
+    # stderr is the trap Invoke-NativeCapture exists for. Nothing is captured
+    # here - the point is to watch a ten-minute build - so the preference is
+    # lowered around the call instead.
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { & docker @buildArgs }
+    finally { $ErrorActionPreference = $previous }
+
+    if ($LASTEXITCODE -ne 0) { throw "docker compose build aio failed with exit code $LASTEXITCODE" }
     Write-Ok "image built"
 }
 
