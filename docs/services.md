@@ -59,6 +59,15 @@ credential is omitted rather than written broken: Homepage runs `JSON.parse`
 over the app's plain-text 401 and the whole page then fails to render, naming no
 widget.
 
+**The Jellyfin widget needs `version: 2` against Jellyfin 12.** Homepage still
+defaults the widget to version 1, which calls `/emby/Sessions?api_key=...` — the
+Emby-compatible alias Jellyfin 12 dropped. The server answers 404 with a
+zero-byte body, `JSON.parse` chokes on the empty string, and the widget shows
+*Unexpected end of JSON input*, which reads like a bad API key and is not one.
+Version 2 calls the native paths and sends the token in an `Authorization`
+header. `New-Dashboard.ps1` writes it; a `services.yaml` generated before this
+change has to be regenerated, or the line added by hand.
+
 `HOMEPAGE_ALLOWED_HOSTS` is mandatory since v1.0 — without your address in it
 the page is blank. `New-Dashboard.ps1` sets it from `HOST_IP`.
 
@@ -213,6 +222,7 @@ wizards, pointed at `/data/media/manga`, `/data/media/comics` and
 | --- | --- |
 | dashboard blank or host error | `HOMEPAGE_ALLOWED_HOSTS` missing your address |
 | widget shows "API Error" | widget `url` must be the container name (`http://sonarr:8989`), not `localhost` |
+| Jellyfin widget: "Unexpected end of JSON input" | the widget is on version 1 and the server is Jellyfin 12+; it needs `version: 2` |
 | Kavita widget 403 | the account needs the Admin role |
 | imports are slow, disk fills up | hardlinks unavailable on the NTFS mount, so imports copy ([windows.md](windows.md)) |
 | Sonarr/Radarr download nothing | no indexers in Prowlarr, or *Sync App Indexers* never run |
