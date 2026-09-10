@@ -120,12 +120,21 @@ function Get-KeyedWidget {
     return $Block
 }
 
+# version: 2 is not optional here, whatever the Homepage docs call it. The
+# widget defaults to version 1, which calls /emby/Sessions?api_key=... - the
+# legacy Emby-compatible alias Jellyfin 12 removed. Jellyfin answers those with
+# a 404 and a zero-byte body, Homepage runs JSON.parse over the empty string,
+# and the widget reports "Unexpected end of JSON input" as if the key were
+# wrong. Version 2 uses the native paths with the token in an Authorization
+# header instead. The compose file tracks jellyfin:latest, so 12+ is what you
+# get; drop this line only if you pin the image back to 10.x.
 $jellyfinWidget = Get-WidgetOrNothing -For 'Jellyfin' -RequiredKeys @('HOMEPAGE_VAR_JELLYFIN_KEY') -Block @"
 
         widget:
           type: jellyfin
           url: http://jellyfin:8096
           key: {{HOMEPAGE_VAR_JELLYFIN_KEY}}
+          version: 2
           enableBlocks: true
           enableNowPlaying: true
 "@
