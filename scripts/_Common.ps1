@@ -557,3 +557,121 @@ function Get-ProwlarrState {
     }
     return $state
 }
+
+# ============================================================ list parsing
+#
+# MyAnimeList's own API needs a registered client id, and AniList's API has been
+# switched off by its maintainers, so neither list is reachable from a script
+# right now. What is always reachable is the list page itself: select it in the
+# browser, copy, paste into a text file. These two helpers turn that paste into
+# records, which is why they live here rather than in Import-MangaLists.ps1 -
+# they are pure, so Test-Common.ps1 can exercise them.
+
+# MAL prints chapter and volume progress in three shapes: "12" (read only),
+# "12/34" (read of a known total) and "12 [56]" or "12/34 [56]", where the
+# bracketed number is how many have actually been published so far. The last one
+# is the interesting one for acquisition: it is the ceiling worth downloading.
+function ConvertFrom-MalProgress {
+    param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Token)
+
+    $out = [PSCustomObject]@{ read = 0; total = 0; available = 0 }
+    if (-not $Token -or $Token -eq '-') { return $out }
+
+    $m = [regex]::Match($Token.Trim(), '^(?<r>\d+)(?:/(?<t>\d+))?(?:\s*\[(?<a>\d+)\])?$')
+    if (-not $m.Success) { return $out }
+
+    $out.read = [int]$m.Groups['r'].Value
+    if ($m.Groups['t'].Success) { $out.total = [int]$m.Groups['t'].Value }
+    if ($m.Groups['a'].Success) { $out.available = [int]$m.Groups['a'].Value }
+    return $out
+}
+
+# A pasted MAL list has no delimiters worth trusting: every cell lands on its own
+# line, the Score cell is simply absent when unscored, and the Type cell is
+# absent from the Completed section's header. So this classifies each line
+# instead of counting columns - a line is a status header, a column header, a
+# media type, a progress cell, or otherwise the start of a new record.
+#
+# The one assumption: a title is never a line that is *entirely* a progress cell.
+# "20th Century Boys" and "Kaiju No.8" are safe; a manga titled exactly "86"
+# would not be, and would attach itself to the entry above.
+function ConvertFrom-MalListText {
+    param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Text)
+
+    $statuses = 'Reading|Completed|Paused|On-?Hold|Dropped|Planning|Plan to Read'
+    $types = 'Manga|Manhwa|Manhua|Light Novel|Novel|One-?shot|Doujinshi'
+    $columns = 'Title|Score|Chapters|Volumes|Type|Progress|Tags|Rating|Members'
+
+    $entries = New-Object System.Collections.ArrayList
+    $status = ''
+    $title = ''
+    $type = ''
+    $tokens = @()
+
+    # Declared before the loop because it closes over nothing and is called from
+    # two places: on every new title, and once more after the last line.
+    function Add-MalEntry {
+        param($Bag, [string]$Status, [string]$Title, [string]$Type, [string[]]$Tokens)
+        if (-not $Title) { return }
+
+        $score = ''
+        $rest = @($Tokens)
+        # Score is a bare integer 0-10 and is omitted entirely when unset, so it
+        # can only be the first cell, and only when a chapters and a volumes
+        # cell follow it. Two cells means no score, not a score and no volumes.
+        if ($rest.Count -ge 3 -and $rest[0] -match '^\d{1,2}$' -and [int]$rest[0] -le 10) {
+            $score = $rest[0]
+            $rest = @($rest | Select-Object -Skip 1)
+        }
+
+        # Cast rather than pass through: an absent cell is $null, and $null does
+        # not bind to a mandatory [string] even one that allows the empty string.
+        $chapters = ConvertFrom-MalProgress -Token ([string](@($rest)[0]))
+        $volumes = ConvertFrom-MalProgress -Token ([string](@($rest)[1]))
+
+        $null = $Bag.Add([PSCustomObject]@{
+            status            = $Status
+            title             = $Title
+            type              = $Type
+            score             = $score
+            chaptersRead      = $chapters.read
+            chaptersTotal     = $chapters.total
+            chaptersAvailable = $chapters.available
+            volumesRead       = $volumes.read
+            volumesTotal      = $volumes.total
+        })
+    }
+
+    # Split on tabs as well as newlines: copying the same table sometimes yields
+    # one row per line with tab-separated cells, and sometimes one cell per line.
+    # Flattening both into a single stream of cells makes the paste shape a
+    # non-issue.
+    foreach ($raw in ($Text -split '\r?\n')) {
+        foreach ($cell in ($raw -split "`t")) {
+            $line = $cell.Trim()
+            if (-not $line) { continue }
+
+            # Checked before the type test because the Completed section's header
+            # is "Completed Manga", which is a status carrying a type suffix.
+            $m = [regex]::Match($line, "^(?<s>$statuses)(?:\s+(?:$types))?$")
+            if ($m.Success) {
+                Add-MalEntry -Bag $entries -Status $status -Title $title -Type $type -Tokens $tokens
+                $status = $m.Groups['s'].Value
+                $title = ''; $type = ''; $tokens = @()
+                continue
+            }
+
+            if ($line -match "^(?:$columns)$") { continue }
+
+            if ($line -match "^(?:$types)$") { $type = $line; continue }
+
+            if ($line -match '^(?:-|\d+(?:/\d+)?(?:\s*\[\d+\])?)$') { $tokens += $line; continue }
+
+            Add-MalEntry -Bag $entries -Status $status -Title $title -Type $type -Tokens $tokens
+            $title = $line; $type = ''; $tokens = @()
+        }
+    }
+    Add-MalEntry -Bag $entries -Status $status -Title $title -Type $type -Tokens $tokens
+
+    return @($entries)
+}
