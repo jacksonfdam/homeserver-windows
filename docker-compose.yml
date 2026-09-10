@@ -269,6 +269,33 @@ services:
     ports:
       - "${KAVITA_PORT:-5001}:5000"
 
+  # The manga downloader. Built from docker/aio/Dockerfile because upstream
+  # publishes no image, and behind its own profile because it is not a service:
+  # it has no port, nothing listens, and it exists to be run one command at a
+  # time.
+  #
+  #     docker compose --profile manga build aio
+  #     docker compose --profile manga run --rm aio --search "Dandadan" --auto-pick
+  #
+  # Get-MangaChapters.ps1 wraps that second line, and is the intended way in.
+  aio:
+    profiles: [manga]
+    build:
+      context: ./docker/aio
+    image: homeserver/aio:latest
+    container_name: aio
+    networks: [homeserver]
+    environment:
+      TZ: ${TZ:-Europe/Stockholm}
+      # Writes ComicInfo.xml with tags and a description, and caches the
+      # matched AniList and MAL ids so a re-run skips the fuzzy title match.
+      AIO_METADATA_SOURCE: ${AIO_METADATA_SOURCE:-anilist}
+    volumes:
+      # The same path Komga mounts as /data/manga and Kavita as /manga, so a
+      # finished CBZ is already in the library - no move, no second copy.
+      - ${DATA_ROOT}/media/manga:/data/manga
+      - ${CONFIG_ROOT}/aio:/config
+
   # ---------------------------------------------------------------- dashboard
   homepage:
     <<: *restart
