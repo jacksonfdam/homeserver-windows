@@ -183,6 +183,26 @@ try {
         if ($s.present) { throw 'present should be false' }
     }
 
+    # The bug this exists for: `docker image inspect` on a missing image writes
+    # to stderr and exits non-zero, which under $ErrorActionPreference = 'Stop'
+    # killed the script at the line whose entire job was noticing that.
+    # This test runs under 'Stop' itself, so a regression fails it rather than
+    # returning a wrong answer.
+    Test-Case 'Invoke-NativeCapture survives stderr and a non-zero exit' {
+        if ($env:OS -eq 'Windows_NT') {
+            $exe = 'cmd.exe'
+            $nativeArgs = @('/c', 'echo boom 1>&2 & exit 3')
+        }
+        else {
+            $exe = '/bin/sh'
+            $nativeArgs = @('-c', 'echo boom 1>&2; exit 3')
+        }
+        $r = Invoke-NativeCapture -FilePath $exe -Arguments $nativeArgs
+        if ($r.exitCode -ne 3) { throw "exit code came back $($r.exitCode)" }
+        if (($r.output -join ' ') -notmatch 'boom') { throw "stderr was lost: $($r.output -join ' ')" }
+        if ($ErrorActionPreference -ne 'Stop') { throw "the preference was left as $ErrorActionPreference" }
+    }
+
     Test-Case 'ConvertTo-SafeFolderName strips what NTFS refuses' {
         $r = ConvertTo-SafeFolderName -Name 'Is it Wrong to Try? Vol: 1/2 *'
         if ($r -match '[\\/:*?"<>|]') { throw "got '$r'" }
