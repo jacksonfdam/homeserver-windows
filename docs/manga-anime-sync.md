@@ -1,7 +1,8 @@
 # Manga and anime list sync — design
 
-**Status: decided 2026-09-09. Nothing is implemented yet**, apart from the
-MangaBaka mirror. This is the shape to build.
+**Status: pipeline A works end to end as of 2026-09-10.** B is still to build.
+Steps below are marked as they land, and two of them turned out to be already
+done by AIO rather than by this repository.
 
 Goal: read reading and watching lists from AniList and MyAnimeList and have the
 stack acquire what is on them — manga into Komga and Kavita, anime into Jellyfin
@@ -11,7 +12,7 @@ The work splits into three pipelines that share almost nothing:
 
 | | list source | acquisition | reader/player | state |
 | --- | --- | --- | --- | --- |
-| **A** manga | AniList + MAL | AIO Webtoon Downloader | Komga / Kavita | to build |
+| **A** manga | MAL (export or paste) | AIO Webtoon Downloader | Komga / Kavita | **works** |
 | **B** anime list sync | AniList + MAL | bridge into Sonarr | — | to build |
 | **C** anime download | Sonarr | Prowlarr + qBittorrent | Jellyfin | **works** |
 
@@ -74,12 +75,22 @@ a queue — a change of purpose rather than a new subsystem.
    `manga_mangadb_id`, which is the id step 3 needs; the paste carries titles
    only. The GraphQL and API v2 readers are still worth having when they become
    reachable, because a paste is a snapshot and an API is a sync.
-3. **Resolution.** List entry → MangaBaka row → the identity used downstream.
-   This is what makes the same series on both lists one item instead of two.
-4. **Acquisition.** Hand the resolved series to AIO, preferring REST over
-   shelling out so failures come back as data.
-5. **ComicInfo.xml.** AIO does not write it, so the script does, from the
-   MangaBaka row it already has open. Without it, Komga and Kavita fall back to
+3. **Resolution.** Still to do, and now the weakest link. A list entry goes to
+   AIO as a *title*, and AIO's own fuzzy search picks the series — so the same
+   manga on two lists is still two items, and a spin-off can win the match.
+   `-MinMatch 0.80` and the dry run are the current mitigation, not a fix. The
+   MangaBaka row is what would replace the guess.
+4. **Acquisition.** Done — `Get-MangaChapters.ps1` and the `aio` service.
+   Not over REST, though: **AIO's FastAPI interface does not download.** It
+   serves `/api/handlers`, `/api/info`, `/api/chapters`, `/api/chapter_images`
+   and `/api/download_image` — metadata and single images, no queue and no job
+   status. So the driver runs the CLI, and the container has no port and is run
+   one command at a time instead of left running.
+5. **ComicInfo.xml.** Already done, by AIO, not by this repository:
+   `--metadata-source anilist` writes tags, a description, `<AnilistId>` and
+   `<MalId>`, and caches the matched ids so `--update-all` skips the fuzzy
+   title match. The compose service turns it on by default. MangaBaka is still
+   the better source for step 3, but it is no longer needed to keep Komga off
    filename parsing.
 
 **What it costs**, recorded so it is not rediscovered as a surprise:
@@ -111,7 +122,16 @@ To verify before designing it:
   `manami-project/anime-offline-database` are the candidates; both need checking
   for current coverage
 
-## Open question
+## Answered
 
-Does AIO's FastAPI interface cover the whole flow — search, queue, status — or
-only part of it, with the rest CLI-only?
+**Does AIO's FastAPI interface cover the whole flow?** No — only metadata.
+Download, search-and-pick, and `--update-all` are CLI. See step 4.
+
+## Still open
+
+**Whether `--update-all` needs one `--output-dir` per series.** The flag scans
+`--output-dir` for saved parameters; whether that scan is recursive is not
+documented, and this layout puts each series in its own folder. So
+`Get-MangaChapters.ps1 -Update` walks the library itself and runs the flag once
+per series. That is correct either way, and wasteful if the scan turns out to
+recurse — worth one measurement on a live library.
