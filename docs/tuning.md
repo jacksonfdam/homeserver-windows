@@ -126,12 +126,13 @@ instead of hardcoding a field list that the next *arr release invalidates.
 - **Music playback.** Lidarr fills `/data/media/music` and nothing in the stack
   presents it. Jellyfin can serve the same path but is not configured to. The one
   content type where the pipeline stops.
-- **Manga acquisition.** Being built — see
-  [manga-anime-sync.md](manga-anime-sync.md). Only the MangaBaka mirror exists so
-  far. `Import-MangaLists.ps1` is a different thing: it reports what is missing
-  from Komga or Kavita and acquires nothing ([manga-lists.md](manga-lists.md)).
+- ~~**Manga acquisition.**~~ Done, and no longer in this list —
+  `Get-MangaChapters.ps1` and the `manga` compose profile, driven by the backlog
+  `Import-MangaLists.ps1` writes ([manga-lists.md](manga-lists.md)). What is
+  still left to you is the same thing as the indexers: which sources the search
+  reaches, and reading the dry run before `-Apply`.
 
-Those last two share a shape with the Letterboxd list the movie guide uses, and
+That last one shares a shape with the Letterboxd list the movie guide uses, and
 it is worth naming: an external list is the source of truth, the *arr app or the
 sync script is the executor, and **removal policy is a decision, not a default** —
 deleting files when something leaves a list is useful on a small disk and
