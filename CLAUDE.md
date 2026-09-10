@@ -70,6 +70,16 @@ survive *arr version bumps. Do not replace it with a literal JSON body.
 checks throw). Windows PowerShell 5.1 is what ships on the box; PS7 is not
 assumed.
 
+**Never merge a native command's stderr with `2>&1` directly.** Each stderr line
+becomes a `NativeCommandError` record, and `$ErrorActionPreference = 'Stop'` —
+which every script here sets — promotes that to a terminating error. So reading
+the output of any tool that logs progress to stderr kills the script that ran
+it. `Invoke-NativeCapture` in `_Common.ps1` is the way: it lowers the preference
+for the duration, restores it in a `finally`, and returns exit code plus output.
+This shipped once and failed in the worst possible place — the
+`docker image inspect` probe for a missing image was itself what died when the
+image was missing, so the error appeared on the one path written to handle it.
+
 **Everything is idempotent.** Re-running any script must be safe. Existing
 providers are detected by name and skipped; the Komga collection merges rather
 than duplicating; config files are backed up before being rewritten.
